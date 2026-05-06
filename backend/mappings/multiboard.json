@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "title": "Multi-Board Residential Real Estate Contract 8.0",
+    "source_pdf": "Multi-Board-8.0 (1).pdf",
+    "filled_filename": "multiboard_filled.pdf",
+    "notes": "Each PDF field name corresponds to a line number in the contract. Verified visually via scripts/label_pdf_fields.py + scripts/dump_multiboard_fields.py. Initials, signatures, and optional paragraphs (sale-of-buyers-real-estate, home warranty, alternative energy, possession after closing) are intentionally left for the agent to fill manually."
+  },
+  "fields": {
+    "1":  "{buyer_names_joined}",
+    "2":  "{seller_names_joined}",
+
+    "Address": "{property.address_full}, {county} County",
+
+    "7":  "{property_type_attached_state}",
+    "8":  "{property_type_detached_state}",
+    "9":  "{property_type_multi_unit_state}",
+
+    "24": "{purchase_price|currency}",
+    "25": "{credit_at_closing|currency}",
+    "26": "{earnest_money|currency}",
+    "27": "{earnest_business_days}",
+    "28": "{additional_earnest_money|currency}",
+    "29": "{additional_earnest_month_day}",
+    "30": "{additional_earnest_year_2digit}",
+
+    "31": "{escrowee_state}",
+
+    "37": "{seller_pays_brokerage_state}",
+    "38": "{commission_percent_value}",
+    "39": "{commission_dollar_value}",
+
+    "44": "{closing_date_month_day}",
+    "45": "{closing_date_year_2digit}",
+
+    "111": "{loan_rate_type_state}",
+    "112": "{loan_type_state}",
+    "113": "{loan_type_other}",
+    "114": "{loan_percent_of_price}",
+    "115": "{loan_max_rate}",
+    "116": "{loan_amortization_years}",
+    "117": "{loan_max_points}",
+
+    "132": "{statutory_state}",
+    "133": "{statutory_state}",
+    "138": "{statutory_state}",
+    "139": "{statutory_state}",
+    "140": "{statutory_state}",
+
+    "141": "{tax_proration_percent}",
+    "142": "{hoa_fee|currency}",
+    "143": "{hoa_frequency}",
+
+    "314": "{today}",
+    "317": "{buyer_names_joined}",
+    "318": "{buyer_address}",
+    "319": "{buyer_city_state_zip}",
+    "320": "{tenant_or_buyer_phone}",
+    "321": "{tenant_or_buyer_email}",
+    "322": "{agent.brokerage}",
+    "323": "{agent.brokerage_mls}",
+    "324": "{agent.brokerage_license}",
+    "325": "{agent.brokerage_address}",
+    "326": "{agent.name}",
+    "327": "{agent.mls}",
+    "328": "{agent.license}",
+    "329": "{agent.phone}",
+    "331": "{agent.email}"
+  }
+}

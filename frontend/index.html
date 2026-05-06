@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paperwork — Real Estate Automator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-mark"></div>
+        <div class="logo-text">
+          <span class="logo-title">Paperwork</span>
+          <span class="logo-sub">Real estate automator</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-ghost" id="profile-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+          Agent profile
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <!-- LEFT PANE: input -->
+      <section class="pane pane-left">
+        <div class="pane-header">
+          <h2 class="pane-title">Transaction notes</h2>
+          <p class="pane-sub">Paste anything you'd write to remember this deal — address, rent, dates, parties, contacts. Paste or drop MLS screenshots too.</p>
+        </div>
+
+        <div class="notes-wrap" id="notes-wrap">
+          <textarea
+            id="notes"
+            class="notes-input"
+            spellcheck="false"
+            placeholder="221 W Hubbard Unit 803 Chicago, IL 60654&#10;$3182 monthly rent&#10;5/4/26 - 7/3/27&#10;$3182 co-op&#10;hubbard221leasing@draperandkramer.com — for invoice"
+          ></textarea>
+
+          <div class="attachments" id="attachments" hidden></div>
+
+          <div class="notes-actions">
+            <div class="notes-actions-left">
+              <button class="btn-icon" id="attach-btn" title="Attach screenshot">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input type="file" id="file-input" accept="image/*" multiple hidden />
+              <span class="hint" id="notes-hint">Cmd↵ to extract · paste/drop images</span>
+            </div>
+            <button class="btn-primary" id="extract-btn">
+              <span class="btn-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+                Extract fields
+              </span>
+              <span class="btn-spinner" hidden></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- structured fields appear after extraction -->
+        <div class="fields" id="fields" hidden>
+          <div class="fields-header">
+            <h3 class="fields-title">Parsed fields</h3>
+            <span class="fields-status" id="fields-status">Review before generating</span>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-label">Property</div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Address</span>
+                <input type="text" data-path="property.address" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Unit</span>
+                <input type="text" data-path="property.unit" />
+              </label>
+              <label class="field">
+                <span class="field-label">City</span>
+                <input type="text" data-path="property.city" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">State</span>
+                <input type="text" data-path="property.state" />
+              </label>
+              <label class="field">
+                <span class="field-label">Zip</span>
+                <input type="text" data-path="property.zip" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">County (sale)</span>
+                <input type="text" data-path="county" placeholder="Cook" />
+              </label>
+              <label class="field">
+                <span class="field-label">Property type (sale)</span>
+                <select data-path="property_type">
+                  <option value="">—</option>
+                  <option value="attached">Single Family Attached</option>
+                  <option value="detached">Single Family Detached</option>
+                  <option value="multi_unit">Multi-Unit</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-label">Transaction</div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Type</span>
+                <select data-path="transaction_type">
+                  <option value="">—</option>
+                  <option value="lease">Lease</option>
+                  <option value="sale">Sale</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Lease start</span>
+                <input type="text" data-path="lease_start" placeholder="YYYY-MM-DD" />
+              </label>
+              <label class="field">
+                <span class="field-label">Lease end</span>
+                <input type="text" data-path="lease_end" placeholder="YYYY-MM-DD" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Monthly rent (lease)</span>
+                <input type="text" data-path="monthly_rent" placeholder="$" />
+              </label>
+              <label class="field">
+                <span class="field-label">Purchase price (sale)</span>
+                <input type="text" data-path="purchase_price" placeholder="$" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Closing date (sale)</span>
+                <input type="text" data-path="closing_date" placeholder="YYYY-MM-DD" />
+              </label>
+              <label class="field">
+                <span class="field-label">Earnest money (sale)</span>
+                <input type="text" data-path="earnest_money" placeholder="$" />
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-label">Parties</div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Tenant / buyer name(s)</span>
+                <input type="text" data-path="tenant_or_buyer_names" data-list="true" placeholder="Add name(s) — separate with commas or &" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Seller name(s) (sale)</span>
+                <input type="text" data-path="seller_names" data-list="true" placeholder="Add seller name(s)" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Tenant email</span>
+                <input type="email" data-path="tenant_or_buyer_email" placeholder="—" />
+              </label>
+              <label class="field">
+                <span class="field-label">Tenant phone</span>
+                <input type="text" data-path="tenant_or_buyer_phone" placeholder="—" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Landlord billing email</span>
+                <input type="email" data-path="landlord_billing_email" />
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-label">Compensation</div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">Commission</span>
+                <input type="text" data-path="commission_amount" placeholder="$ or %" />
+              </label>
+              <label class="field">
+                <span class="field-label">Retainer</span>
+                <input type="text" data-path="retainer" placeholder="$0" />
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-group-label">Buyer's current residence (sale)</div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Address</span>
+                <input type="text" data-path="buyer_address" />
+              </label>
+            </div>
+            <div class="field-row two">
+              <label class="field">
+                <span class="field-label">City</span>
+                <input type="text" data-path="buyer_city" />
+              </label>
+              <label class="field">
+                <span class="field-label">State</span>
+                <input type="text" data-path="buyer_state" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span class="field-label">Zip</span>
+                <input type="text" data-path="buyer_zip" />
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT PANE: documents -->
+      <section class="pane pane-right">
+        <div class="pane-header">
+          <h2 class="pane-title">Documents</h2>
+          <p class="pane-sub">All four are selected by default. Uncheck any that don't apply.</p>
+        </div>
+
+        <div class="selection-mode" id="selection-mode">
+        <div class="doc-list">
+          <article class="doc-card" data-doc="multiboard">
+            <label class="doc-check">
+              <input type="checkbox" checked />
+              <span class="check-box"></span>
+            </label>
+            <div class="doc-body">
+              <div class="doc-row">
+                <h3 class="doc-title">Multi-Board Residential Contract 8.0</h3>
+                <span class="readiness readiness-pending">awaiting extraction</span>
+              </div>
+              <p class="doc-sub">14-page Illinois sale contract — buyer/seller, price, contingencies, closing.</p>
+              <div class="doc-meta">
+                <span class="meta-pill">sale</span>
+                <span class="meta-pill">14 pages</span>
+                <span class="meta-pill ready">ready</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="doc-card" data-doc="tenant_rep">
+            <label class="doc-check">
+              <input type="checkbox" checked />
+              <span class="check-box"></span>
+            </label>
+            <div class="doc-body">
+              <div class="doc-row">
+                <h3 class="doc-title">Compass Tenant Representation Agreement</h3>
+                <span class="readiness readiness-pending">awaiting extraction</span>
+              </div>
+              <p class="doc-sub">Exclusive tenant rep — client info, term, commission, dual agency election.</p>
+              <div class="doc-meta">
+                <span class="meta-pill">lease</span>
+                <span class="meta-pill">4 pages</span>
+                <span class="meta-pill ready">ready</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="doc-card" data-doc="lease_abstract">
+            <label class="doc-check">
+              <input type="checkbox" checked />
+              <span class="check-box"></span>
+            </label>
+            <div class="doc-body">
+              <div class="doc-row">
+                <h3 class="doc-title">Lease Abstract</h3>
+                <span class="readiness readiness-pending">awaiting extraction</span>
+              </div>
+              <p class="doc-sub">One-page summary — property, dates, rent, commission, concessions.</p>
+              <div class="doc-meta">
+                <span class="meta-pill">lease</span>
+                <span class="meta-pill">1 page</span>
+                <span class="meta-pill ready">ready</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="doc-card" data-doc="lease_invoice">
+            <label class="doc-check">
+              <input type="checkbox" checked />
+              <span class="check-box"></span>
+            </label>
+            <div class="doc-body">
+              <div class="doc-row">
+                <h3 class="doc-title">Compass Lease Invoice</h3>
+                <span class="readiness readiness-pending">awaiting extraction</span>
+              </div>
+              <p class="doc-sub">Commission invoice mailed to landlord — property, tenant, amount due.</p>
+              <div class="doc-meta">
+                <span class="meta-pill">lease</span>
+                <span class="meta-pill">1 page</span>
+                <span class="meta-pill ready">ready</span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="generate-bar">
+          <div class="generate-summary" id="generate-summary">4 selected · 0 ready</div>
+          <button class="btn-primary btn-lg" id="generate-btn" disabled>
+            <span class="btn-label">
+              Generate documents
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+        </div>
+        </div><!-- /selection-mode -->
+
+        <div class="preview-mode" id="preview-mode" hidden>
+          <div class="preview-header">
+            <button class="btn-ghost btn-sm" id="back-to-selection">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              Edit selection
+            </button>
+            <button class="btn-primary btn-sm" id="regenerate-btn">
+              <span class="btn-label">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+                Regenerate
+              </span>
+              <span class="btn-spinner" hidden></span>
+            </button>
+          </div>
+          <div class="tab-strip" id="tab-strip" role="tablist"></div>
+          <div class="pages-scroll" id="pages-scroll">
+            <div class="pages-loading" id="pages-loading" hidden>
+              <span class="btn-spinner"></span>
+              <span class="loading-text">rendering…</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Agent profile drawer -->
+    <aside class="drawer" id="drawer" hidden>
+      <div class="drawer-scrim" data-close></div>
+      <div class="drawer-panel">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Agent profile</h2>
+          <button class="btn-icon" data-close aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <p class="drawer-sub">Saved to this browser. Auto-fills your info on every form.</p>
+        <div class="drawer-body">
+          <label class="field">
+            <span class="field-label">Full name</span>
+            <input type="text" data-profile="name" placeholder="Jane Doe" />
+          </label>
+          <label class="field">
+            <span class="field-label">License #</span>
+            <input type="text" data-profile="license" placeholder="475.123456" />
+          </label>
+          <label class="field">
+            <span class="field-label">Brokerage</span>
+            <input type="text" data-profile="brokerage" value="Compass Illinois, Inc." />
+          </label>
+          <label class="field">
+            <span class="field-label">Brokerage address</span>
+            <input type="text" data-profile="brokerage_address" value="2350 N Lincoln Ave 3rd FL, Chicago, IL 60614" />
+          </label>
+          <label class="field">
+            <span class="field-label">MLS # (you)</span>
+            <input type="text" data-profile="mls" placeholder="—" />
+          </label>
+          <div class="field-row two">
+            <label class="field">
+              <span class="field-label">Brokerage MLS #</span>
+              <input type="text" data-profile="brokerage_mls" placeholder="—" />
+            </label>
+            <label class="field">
+              <span class="field-label">Brokerage License #</span>
+              <input type="text" data-profile="brokerage_license" placeholder="—" />
+            </label>
+          </div>
+          <div class="field-row two">
+            <label class="field">
+              <span class="field-label">Phone</span>
+              <input type="text" data-profile="phone" placeholder="—" />
+            </label>
+            <label class="field">
+              <span class="field-label">Email</span>
+              <input type="email" data-profile="email" placeholder="—" />
+            </label>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn-ghost" data-close>Cancel</button>
+          <button class="btn-primary" id="profile-save">Save profile</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

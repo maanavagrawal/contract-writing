@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "title": "Compass Tenant Representation Agreement",
+    "source_pdf": "Compass Tenant Agency Agreement Chicago 5-25 iiiKM.pdf",
+    "filled_filename": "tenant_rep_filled.pdf"
+  },
+  "fields": {
+    "Illinois Inc dba Compass Compass as your exclusive broker and": "{today_month_day}",
+    "Text2": "{today_year_2digit}",
+    "Tenant 1": "{tenant_1_name}",
+    "Tenant 2": "{tenant_2_name}",
+    "Text1": "{property.address_full}",
+    "Agent 1": "{agent.name}",
+    "Agent 2": "",
+    "Compass": "{commission_amount|currency}",
+    "s leasing of property": "",
+    "undefined": "",
+    "1": "",
+    "C Protection Period If within": "{protection_period_days}",
+    "4 Retainer Client agrees to pay Compass a retainer of": "{retainer|currency}",
+    "Text4": "{lease_end_month_day}",
+    "Text5": "{lease_end_year_2digit}",
+    "Text6": "{early_termination_fee|currency}",
+    "Date": "{today}",
+    "Email": "{tenant_or_buyer_email}",
+    "Phone": "{tenant_or_buyer_phone}",
+    "Date_2": "{today}",
+    "Email_2": "",
+    "Phone_2": "",
+    "Date_3": "{today}",
+    "Date_4": "",
+    "Date_5": "",
+    "MB Signature": "",
+    "Address if different than address of Property 1": "",
+    "Address if different than address of Property 2": ""
+  }
+}

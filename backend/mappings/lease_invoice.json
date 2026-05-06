@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "title": "Compass Lease Invoice",
+    "source_pdf": "2025 Compass Chicagoland Lease Invoice Landlords and Tenant Use copy.pdf",
+    "filled_filename": "lease_invoice_filled.pdf"
+  },
+  "fields": {
+    "LEASE DATE": "{today}",
+    "COMMENCEMENT DATE": "{lease_start|date}",
+    "PROPERTY ADDRESS": "{property.address_full}",
+    "TENANTS NAME": "{tenant_or_buyer_names|join}",
+    "AMOUNT DUE COMPASS": "{commission_amount|currency}",
+    "COMPASS AGENT": "{agent.name}"
+  }
+}

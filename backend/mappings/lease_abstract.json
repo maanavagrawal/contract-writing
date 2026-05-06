@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "title": "Lease Abstract",
+    "source_pdf": "Lease Abstract Form.pdf",
+    "filled_filename": "lease_abstract_filled.pdf"
+  },
+  "fields": {
+    "Todays Date": "{today}",
+    "Agent": "{agent.name}",
+    "Property Address": "{property.address}",
+    "Unit No": "{property.unit}",
+    "City": "{property.city}",
+    "State": "{property.state}",
+    "Lease Sign Date": "{today}",
+    "Lease Start Date": "{lease_start|date}",
+    "Lease End Date.0.0": "{lease_end|date}",
+    "Rental Amount": "{monthly_rent|currency}",
+    "Text1": "{net_monthly_rent|currency}",
+    "Commission to Compass": "{commission_amount|currency}",
+    "Text2": "{concessions}",
+    "Agent Signed Date": "{today}",
+    "Sales Manager Signed Date": ""
+  }
+}
