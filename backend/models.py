@@ -23,6 +23,10 @@ from pydantic import BaseModel, Field
 TemplateStatus = Literal["pending_review", "ready", "needs_attention"]
 ExtraFieldType = Literal["text", "money", "date", "number", "bool", "list_str"]
 
+# Single-user default until auth ships. When auth lands, every place that
+# currently writes DEFAULT_USER swaps to the authenticated user's id.
+DEFAULT_USER_ID = "default"
+
 
 def new_id() -> str:
     """Short uuid4. Stable enough for our scale, no need for ULIDs."""
@@ -44,6 +48,7 @@ class ExtraField(BaseModel):
 
 class Template(BaseModel):
     id: str
+    user_id: str = DEFAULT_USER_ID
     title: str
     source_pdf_path: str
     mapping_path: str
@@ -61,6 +66,7 @@ class Template(BaseModel):
             extras = []
         return cls(
             id=row["id"],
+            user_id=row["user_id"],
             title=row["title"],
             source_pdf_path=row["source_pdf_path"],
             mapping_path=row["mapping_path"],
@@ -73,6 +79,7 @@ class Template(BaseModel):
 
 class Transaction(BaseModel):
     id: str
+    user_id: str = DEFAULT_USER_ID
     fields_json: str                  # serialized TransactionFields
     agent_json: str                   # serialized AgentProfile
     created_at: str
@@ -81,37 +88,28 @@ class Transaction(BaseModel):
     def from_row(cls, row: sqlite3.Row) -> "Transaction":
         return cls(
             id=row["id"],
+            user_id=row["user_id"],
             fields_json=row["fields_json"],
             agent_json=row["agent_json"],
             created_at=row["created_at"],
         )
 
 
-class GeneratedDocument(BaseModel):
-    id: str
-    transaction_id: str
-    template_id: str
-    pdf_path: str
-    filename: str
-    created_at: str
-
-    @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "GeneratedDocument":
-        return cls(
-            id=row["id"],
-            transaction_id=row["transaction_id"],
-            template_id=row["template_id"],
-            pdf_path=row["pdf_path"],
-            filename=row["filename"],
-            created_at=row["created_at"],
-        )
-
-
 # ---- Repository functions (kept tiny; raw sqlite3 + dict-style row mapping) ----
+#
+# user_id defaults to DEFAULT_USER_ID throughout. When auth ships, callers
+# pass a real authenticated user id and these queries become per-user scoped
+# without further changes.
 
-def list_templates(conn: sqlite3.Connection) -> list[Template]:
+def list_templates(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> list[Template]:
+    """Return defaults first (is_default=1) then user's own templates by age."""
     rows = conn.execute(
-        "SELECT * FROM templates ORDER BY is_default DESC, created_at ASC"
+        """
+        SELECT * FROM templates
+        WHERE user_id = ? OR is_default = 1
+        ORDER BY is_default DESC, created_at ASC
+        """,
+        (user_id,),
     ).fetchall()
     return [Template.from_row(r) for r in rows]
 
@@ -125,11 +123,11 @@ def insert_template(conn: sqlite3.Connection, tpl: Template) -> None:
     conn.execute(
         """
         INSERT INTO templates
-            (id, title, source_pdf_path, mapping_path, status, is_default, extra_fields, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, user_id, title, source_pdf_path, mapping_path, status, is_default, extra_fields, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            tpl.id, tpl.title, tpl.source_pdf_path, tpl.mapping_path,
+            tpl.id, tpl.user_id, tpl.title, tpl.source_pdf_path, tpl.mapping_path,
             tpl.status, int(tpl.is_default),
             json.dumps([e.model_dump() for e in tpl.extra_fields]),
             tpl.created_at,
@@ -150,24 +148,10 @@ def delete_template(conn: sqlite3.Connection, tpl_id: str) -> None:
 def insert_transaction(conn: sqlite3.Connection, txn: Transaction) -> None:
     conn.execute(
         """
-        INSERT INTO transactions (id, fields_json, agent_json, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO transactions (id, user_id, fields_json, agent_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (txn.id, txn.fields_json, txn.agent_json, txn.created_at),
-    )
-
-
-def insert_generated_document(conn: sqlite3.Connection, doc: GeneratedDocument) -> None:
-    conn.execute(
-        """
-        INSERT INTO generated_documents
-            (id, transaction_id, template_id, pdf_path, filename, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            doc.id, doc.transaction_id, doc.template_id,
-            doc.pdf_path, doc.filename, doc.created_at,
-        ),
+        (txn.id, txn.user_id, txn.fields_json, txn.agent_json, txn.created_at),
     )
 
 
@@ -176,9 +160,11 @@ def get_transaction(conn: sqlite3.Connection, txn_id: str) -> Transaction | None
     return Transaction.from_row(row) if row else None
 
 
-def list_documents_for_transaction(conn: sqlite3.Connection, txn_id: str) -> list[GeneratedDocument]:
+def list_transactions(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> list[Transaction]:
+    """Per-deal history for a user. Used to scan past deals by created_at;
+    the actual filled PDFs aren't stored, only the TransactionFields snapshot."""
     rows = conn.execute(
-        "SELECT * FROM generated_documents WHERE transaction_id = ? ORDER BY created_at ASC",
-        (txn_id,),
+        "SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,),
     ).fetchall()
-    return [GeneratedDocument.from_row(r) for r in rows]
+    return [Transaction.from_row(r) for r in rows]

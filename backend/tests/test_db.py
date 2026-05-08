@@ -47,7 +47,10 @@ def test_schema_has_expected_tables(tmp_db: Path):
         ).fetchall()
         names = {r[0] for r in rows}
     # _migrations is internal bookkeeping; the rest are the Pillar 2 tables.
-    assert {"_migrations", "templates", "transactions", "generated_documents"} <= names
+    # generated_documents intentionally absent — completed PDFs aren't persisted
+    # for privacy; transactions only stores the field snapshot.
+    assert {"_migrations", "templates", "transactions"} <= names
+    assert "generated_documents" not in names
 
 
 def test_seed_inserts_four_il_defaults(tmp_db: Path):
@@ -99,23 +102,56 @@ def test_default_template_cannot_be_deleted(tmp_db: Path):
     assert still_there is not None
 
 
-def test_foreign_keys_enforced(tmp_db: Path):
-    """generated_documents.transaction_id has ON DELETE CASCADE; the FK pragma
-    has to be on for that to fire. Verifies _connect sets it."""
-    import sqlite3
+def test_transaction_round_trip(tmp_db: Path):
+    """Transactions log the TransactionFields + AgentProfile snapshot per deal.
+    Filled PDFs aren't persisted — privacy decision."""
     db.run_migrations(tmp_db)
     txn = models.Transaction(
-        id=models.new_id(), fields_json="{}", agent_json="{}",
+        id=models.new_id(),
+        fields_json='{"property":{"address":"221 W Hubbard"}}',
+        agent_json='{"name":"Test Agent"}',
         created_at=models.now_iso(),
-    )
-    doc = models.GeneratedDocument(
-        id=models.new_id(), transaction_id=txn.id, template_id="lease_invoice",
-        pdf_path="x.pdf", filename="x.pdf", created_at=models.now_iso(),
     )
     with db.get_conn(tmp_db) as conn:
         models.insert_transaction(conn, txn)
-        models.insert_generated_document(conn, doc)
-        # Pointing at a nonexistent template should fail FK check.
-        bad = doc.model_copy(update={"id": models.new_id(), "template_id": "does-not-exist"})
-        with pytest.raises(sqlite3.IntegrityError):
-            models.insert_generated_document(conn, bad)
+        fetched = models.get_transaction(conn, txn.id)
+        listed = models.list_transactions(conn)
+    assert fetched is not None
+    assert fetched.fields_json == txn.fields_json
+    assert fetched.user_id == models.DEFAULT_USER_ID
+    assert len(listed) == 1
+
+
+def test_templates_scoped_per_user(tmp_db: Path):
+    """list_templates returns the requesting user's templates plus all defaults
+    (which are shared across users). Custom templates from other users stay
+    hidden."""
+    db.run_migrations(tmp_db)
+    alice_tpl = models.Template(
+        id=models.new_id(), user_id="alice", title="Alice's Pet Addendum",
+        source_pdf_path="custom-pet.pdf", mapping_path="custom-pet.json",
+        status="ready", is_default=False,
+        created_at=models.now_iso(),
+    )
+    bob_tpl = models.Template(
+        id=models.new_id(), user_id="bob", title="Bob's Pool Disclosure",
+        source_pdf_path="bob-pool.pdf", mapping_path="bob-pool.json",
+        status="ready", is_default=False,
+        created_at=models.now_iso(),
+    )
+    with db.get_conn(tmp_db) as conn:
+        models.insert_template(conn, alice_tpl)
+        models.insert_template(conn, bob_tpl)
+        alice_view = models.list_templates(conn, user_id="alice")
+        bob_view = models.list_templates(conn, user_id="bob")
+
+    alice_titles = {t.title for t in alice_view}
+    bob_titles = {t.title for t in bob_view}
+    # Both see the 4 IL defaults
+    assert "Compass Lease Invoice" in alice_titles
+    assert "Compass Lease Invoice" in bob_titles
+    # Each only sees their own custom
+    assert "Alice's Pet Addendum" in alice_titles
+    assert "Alice's Pet Addendum" not in bob_titles
+    assert "Bob's Pool Disclosure" in bob_titles
+    assert "Bob's Pool Disclosure" not in alice_titles
