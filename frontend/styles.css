@@ -683,6 +683,177 @@ input, textarea, select, button { font-family: inherit; }
   align-items: center;
 }
 
+/* ---------- doc list states (Pillar 2) ---------- */
+.doc-list-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 18px;
+  color: var(--text-muted);
+}
+.doc-list-loading[hidden] { display: none; }
+
+.doc-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.doc-card .btn-icon-sm {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--text-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.doc-card:hover .btn-icon-sm { opacity: 1; }
+.doc-card .btn-icon-sm:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.meta-pill.custom {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.upload-template-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ---------- modal (upload) ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.modal[hidden] { display: none; }
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  animation: fade-in 0.18s ease;
+}
+.modal-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 520px;
+  max-width: 92vw;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: modal-in 0.18s ease;
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 4px;
+}
+.modal-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.modal-sub {
+  margin: 0;
+  padding: 0 22px 18px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.modal-body { padding: 18px 22px; }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+}
+
+/* drop zone */
+.upload-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.upload-drop-zone:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+.upload-drop-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.upload-drop-text { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.upload-drop-text strong { color: var(--text); font-size: 13px; font-weight: 500; }
+
+/* progress UI inside the modal */
+.stage-list { display: flex; flex-direction: column; gap: 10px; }
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+.stage[data-state="done"] { color: var(--text); }
+.stage[data-state="done"] .stage-icon { color: var(--success); }
+.stage[data-state="active"] { color: var(--text); }
+.stage[data-state="active"] .stage-icon { color: var(--accent); }
+.stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: var(--text-subtle);
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.progress-bar-fill.indeterminate {
+  width: 33%;
+  animation: indeterminate-slide 1.4s ease-in-out infinite;
+}
+@keyframes indeterminate-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
 .pages-loading {
   position: absolute;
   inset: 0;

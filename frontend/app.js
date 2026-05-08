@@ -14,14 +14,24 @@
 // (Chrome, Safari, Firefox) honor /NeedAppearances=true and render filled
 // values correctly with zero extra code.
 
-const IMPLEMENTED_DOCS = new Set(["lease_invoice", "lease_abstract", "tenant_rep", "multiboard"]);
+// The 4 IL default templates (all map to existing backend mappings) plus
+// any custom uploaded ones are listed via /api/templates. IMPLEMENTED_DOCS
+// is now seeded from that list at boot rather than hardcoded.
+const IMPLEMENTED_DOCS = new Set();
 
+// Friendly title cache. Seeded with the IL defaults so old toast/preview
+// code still has nice labels even before /api/templates returns. Custom
+// templates' titles are merged in once we hear back.
 const FRIENDLY = {
   lease_invoice: "Lease Invoice",
   lease_abstract: "Lease Abstract",
   tenant_rep: "Tenant Rep",
   multiboard: "Multi-Board Contract",
 };
+
+// Last fetched template list (lightweight). Used by the doc-card renderer
+// + delete handler.
+let knownTemplates = [];
 
 const els = {
   notesWrap: document.getElementById("notes-wrap"),
@@ -48,6 +58,20 @@ const els = {
   tabStrip: document.getElementById("tab-strip"),
   pagesScroll: document.getElementById("pages-scroll"),
   pagesLoading: document.getElementById("pages-loading"),
+  // pillar 2: dynamic doc list + upload modal
+  docList: document.getElementById("doc-list"),
+  docListLoading: document.getElementById("doc-list-loading"),
+  uploadTemplateBtn: document.getElementById("upload-template-btn"),
+  uploadModal: document.getElementById("upload-modal"),
+  uploadDrop: document.getElementById("upload-drop"),
+  uploadFileInput: document.getElementById("upload-file-input"),
+  uploadDropPrimary: document.getElementById("upload-drop-primary"),
+  uploadTitle: document.getElementById("upload-title"),
+  uploadForm: document.getElementById("upload-form"),
+  uploadProgress: document.getElementById("upload-progress"),
+  uploadSubmit: document.getElementById("upload-submit"),
+  uploadCancel: document.getElementById("upload-cancel"),
+  stageExtractLabel: document.getElementById("stage-extract-label"),
 };
 
 let attachedImages = []; // File[]
@@ -191,6 +215,180 @@ function collectFields() {
   return fields;
 }
 
+// ---------- dynamic template list (Pillar 2) ----------
+
+// Friendly subtitle for the 4 IL defaults. Custom uploads use their
+// extra_field_count + a generic note.
+const DEFAULT_DOC_SUB = {
+  lease_invoice: "Commission invoice mailed to landlord — property, tenant, amount due.",
+  lease_abstract: "One-page summary — property, dates, rent, commission, concessions.",
+  tenant_rep: "Exclusive tenant rep — client info, term, commission, dual agency election.",
+  multiboard: "14-page Illinois sale contract — buyer/seller, price, contingencies, closing.",
+};
+
+// Pre-checked by default. Users can uncheck individual ones after first load
+// or upload a custom template (which auto-checks itself).
+const DEFAULT_CHECKED = new Set(["lease_invoice", "lease_abstract", "tenant_rep", "multiboard"]);
+
+async function fetchTemplates() {
+  const res = await fetch("/api/templates");
+  if (!res.ok) throw new Error(`templates list failed (${res.status})`);
+  const data = await res.json();
+  return data.templates || [];
+}
+
+function renderDocCards(templates, opts = {}) {
+  // Preserve existing checkbox state across re-renders so a user-toggled
+  // doc doesn't snap back to checked when we refetch the list.
+  const previousChecked = new Map();
+  for (const card of els.docList.querySelectorAll(".doc-card")) {
+    const key = card.dataset.doc;
+    const cb = card.querySelector('input[type="checkbox"]');
+    if (key && cb) previousChecked.set(key, cb.checked);
+  }
+
+  els.docList.innerHTML = "";
+  IMPLEMENTED_DOCS.clear();
+
+  for (const t of templates) {
+    IMPLEMENTED_DOCS.add(t.id);
+    if (t.title) FRIENDLY[t.id] = t.title;
+
+    const card = document.createElement("article");
+    card.className = "doc-card";
+    card.dataset.doc = t.id;
+
+    const checked = previousChecked.has(t.id)
+      ? previousChecked.get(t.id)
+      : (DEFAULT_CHECKED.has(t.id) || (opts.autoCheck && opts.autoCheck === t.id));
+
+    // checkbox
+    const checkLabel = document.createElement("label");
+    checkLabel.className = "doc-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = checked;
+    cb.addEventListener("change", updateGenerateBar);
+    const checkBox = document.createElement("span");
+    checkBox.className = "check-box";
+    checkLabel.appendChild(cb);
+    checkLabel.appendChild(checkBox);
+    card.appendChild(checkLabel);
+
+    // body
+    const body = document.createElement("div");
+    body.className = "doc-body";
+
+    const row = document.createElement("div");
+    row.className = "doc-row";
+    const title = document.createElement("h3");
+    title.className = "doc-title";
+    title.textContent = t.title;
+    row.appendChild(title);
+
+    const actions = document.createElement("div");
+    actions.className = "doc-card-actions";
+    const pill = document.createElement("span");
+    pill.className = "readiness readiness-pending";
+    pill.textContent = "awaiting extraction";
+    actions.appendChild(pill);
+
+    if (!t.is_default) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-icon-sm";
+      del.title = `Delete ${t.title}`;
+      del.setAttribute("aria-label", `Delete ${t.title}`);
+      del.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      del.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteTemplate(t);
+      });
+      actions.appendChild(del);
+    }
+    row.appendChild(actions);
+    body.appendChild(row);
+
+    const sub = document.createElement("p");
+    sub.className = "doc-sub";
+    if (t.is_default) {
+      sub.textContent = DEFAULT_DOC_SUB[t.id] || "Default Illinois template.";
+    } else if (t.extra_field_count > 0) {
+      sub.textContent = `Custom template — ${t.extra_field_count} extra field${t.extra_field_count === 1 ? "" : "s"} the AI will look for in your notes.`;
+    } else {
+      sub.textContent = "Custom template — fields map to the canonical schema.";
+    }
+    body.appendChild(sub);
+
+    const meta = document.createElement("div");
+    meta.className = "doc-meta";
+    if (t.is_default) {
+      const p = document.createElement("span");
+      p.className = "meta-pill";
+      p.textContent = "IL default";
+      meta.appendChild(p);
+    } else {
+      const p = document.createElement("span");
+      p.className = "meta-pill custom";
+      p.textContent = "Custom";
+      meta.appendChild(p);
+    }
+    if (t.status === "ready") {
+      const p = document.createElement("span");
+      p.className = "meta-pill ready";
+      p.textContent = "ready";
+      meta.appendChild(p);
+    } else if (t.status === "pending_review") {
+      const p = document.createElement("span");
+      p.className = "meta-pill warn";
+      p.textContent = "needs review";
+      meta.appendChild(p);
+    }
+    body.appendChild(meta);
+
+    card.appendChild(body);
+    els.docList.appendChild(card);
+  }
+
+  // Re-run dependent UI now that the cards exist
+  computeReadinessAfterExtract();
+  updateGenerateBar();
+}
+
+async function deleteTemplate(template) {
+  const ok = window.confirm(`Delete "${template.title}"? This can't be undone.`);
+  if (!ok) return;
+  try {
+    const res = await fetch(`/api/templates/${encodeURIComponent(template.id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok && res.status !== 204) {
+      const detail = await res.text();
+      throw new Error(`delete failed (${res.status}): ${detail}`);
+    }
+    knownTemplates = knownTemplates.filter((t) => t.id !== template.id);
+    renderDocCards(knownTemplates);
+    toast(`Deleted ${template.title}`, "success", 2500);
+  } catch (e) {
+    toast(e.message || "delete failed", "error");
+  }
+}
+
+async function loadTemplates(opts = {}) {
+  els.docListLoading.hidden = false;
+  try {
+    knownTemplates = await fetchTemplates();
+    els.docListLoading.hidden = true;
+    renderDocCards(knownTemplates, opts);
+  } catch (e) {
+    els.docListLoading.hidden = true;
+    toast(e.message || "couldn't load templates", "error");
+    // Show an empty state — user can still upload
+    els.docList.innerHTML = '<div class="hint" style="padding: 16px;">Couldn\'t load templates. Refresh to retry.</div>';
+  }
+}
+
 // ---------- doc card readiness (selection mode) ----------
 function setReadiness(card, level, text) {
   const pill = card.querySelector(".readiness");
@@ -207,6 +405,10 @@ function computeReadinessAfterExtract() {
     return Array.isArray(v) ? v.length > 0 : (v != null && String(v).trim() !== "");
   };
 
+  // Required fields per known IL default. Custom templates are checked
+  // generically — we show "ready" once extraction has run because the
+  // template's extras were filled (or set to null when the notes didn't
+  // mention them, which is fine for fill).
   const checks = {
     lease_invoice:  ["property.address", "property.city", "lease_start", "tenant_or_buyer_names", "commission_amount", "agent.name"],
     lease_abstract: ["property.address", "property.city", "lease_start", "lease_end", "monthly_rent", "commission_amount", "agent.name"],
@@ -216,15 +418,18 @@ function computeReadinessAfterExtract() {
 
   document.querySelectorAll(".doc-card").forEach((card) => {
     const key = card.dataset.doc;
-    if (!IMPLEMENTED_DOCS.has(key)) {
-      setReadiness(card, "pending", "coming in next slice");
-      return;
+    const required = checks[key];
+    if (required) {
+      const missing = required.filter((p) => !have(p));
+      if (missing.length === 0) setReadiness(card, "ready", "ready");
+      else if (missing.length === required.length) setReadiness(card, "missing", `${missing.length} missing`);
+      else setReadiness(card, "partial", `${missing.length} missing`);
+    } else {
+      // Custom template — no required-field heuristic, just track whether
+      // extraction has run for the agent to know where to look.
+      if (extracted) setReadiness(card, "ready", "ready");
+      else setReadiness(card, "pending", "awaiting extraction");
     }
-    const required = checks[key] || [];
-    const missing = required.filter((p) => !have(p));
-    if (missing.length === 0) setReadiness(card, "ready", "ready");
-    else if (missing.length === required.length) setReadiness(card, "missing", `${missing.length} missing`);
-    else setReadiness(card, "partial", `${missing.length} missing`);
   });
 }
 
@@ -725,9 +930,7 @@ els.fields.addEventListener("input", () => {
   updateGenerateBar();
 });
 
-document.querySelectorAll(".doc-card input[type='checkbox']").forEach((box) => {
-  box.addEventListener("change", updateGenerateBar);
-});
+// (doc-card checkboxes are wired per-card in renderDocCards now)
 
 // ---------- attachments wiring ----------
 els.attachBtn.addEventListener("click", () => els.fileInput.click());
@@ -785,7 +988,165 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !els.drawer.hidden) els.drawer.hidden = true;
 });
 
+// ---------- upload-template modal (Pillar 2) ----------
+
+// Stash the file the user picks so the Upload button can submit it. Form
+// state lives here rather than scraping inputs at submit time so drag-drop
+// and click-to-browse converge on the same code path.
+let uploadFile = null;
+
+function setUploadFile(file) {
+  if (!file) {
+    uploadFile = null;
+    els.uploadDropPrimary.textContent = "Drop PDF here, or click to browse";
+    els.uploadDrop.classList.remove("dragover");
+  } else {
+    uploadFile = file;
+    els.uploadDropPrimary.textContent = file.name;
+    // Auto-suggest a title from the filename if title is empty.
+    if (!els.uploadTitle.value.trim()) {
+      const stem = (file.name || "").replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
+      // Title-case-ish: capitalize first letter of each word.
+      els.uploadTitle.value = stem.replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+  refreshUploadSubmit();
+}
+
+function refreshUploadSubmit() {
+  const ready = !!uploadFile && els.uploadTitle.value.trim().length > 0;
+  els.uploadSubmit.disabled = !ready;
+}
+
+function openUploadModal() {
+  // Reset state every time so a previous attempt doesn't leak into the next.
+  setUploadFile(null);
+  els.uploadTitle.value = "";
+  els.uploadFileInput.value = "";
+  els.uploadForm.hidden = false;
+  els.uploadProgress.hidden = true;
+  setLoading(els.uploadSubmit, false);
+  els.uploadCancel.disabled = false;
+  for (const stage of els.uploadProgress.querySelectorAll(".stage")) {
+    stage.dataset.state = stage.dataset.stage === "map" ? "active" : "";
+  }
+  els.stageExtractLabel.textContent = "Extracting form fields";
+  els.uploadModal.hidden = false;
+}
+
+function closeUploadModal() {
+  els.uploadModal.hidden = true;
+}
+
+async function submitUpload() {
+  if (!uploadFile || !els.uploadTitle.value.trim()) return;
+  // Swap to the staged-progress UI. Reading + Extracting flip to done as
+  // soon as the request body is constructed; the AI mapping stage is the
+  // long-running one we can't subdivide without server-side progress events.
+  els.uploadForm.hidden = true;
+  els.uploadProgress.hidden = false;
+  els.uploadCancel.disabled = true;
+  setLoading(els.uploadSubmit, true);
+  for (const stage of els.uploadProgress.querySelectorAll(".stage")) {
+    if (stage.dataset.stage === "read" || stage.dataset.stage === "extract") {
+      stage.dataset.state = "done";
+    }
+  }
+
+  const formData = new FormData();
+  formData.append("title", els.uploadTitle.value.trim());
+  formData.append("pdf", uploadFile, uploadFile.name);
+
+  try {
+    const res = await fetch("/api/templates/upload", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`upload failed (${res.status}): ${detail}`);
+    }
+    const data = await res.json();
+    // Mark every stage done before closing the modal.
+    for (const stage of els.uploadProgress.querySelectorAll(".stage")) {
+      stage.dataset.state = "done";
+    }
+    toast(`Uploaded "${data.title}" — ${data.field_count} fields mapped`, "success", 3500);
+    closeUploadModal();
+    // Reload template list and auto-check the new one.
+    await loadTemplates({ autoCheck: data.id });
+  } catch (e) {
+    toast(e.message || "upload failed", "error", 6000);
+    // Roll back to the form view so the user can retry.
+    els.uploadForm.hidden = false;
+    els.uploadProgress.hidden = true;
+    els.uploadCancel.disabled = false;
+    setLoading(els.uploadSubmit, false);
+  }
+}
+
+if (els.uploadTemplateBtn) {
+  els.uploadTemplateBtn.addEventListener("click", openUploadModal);
+}
+if (els.uploadModal) {
+  els.uploadModal.querySelectorAll("[data-close]").forEach((el) => {
+    el.addEventListener("click", () => {
+      // Don't let the user close the modal mid-upload — wait for the
+      // OpenAI call to either resolve or reject so we don't orphan a row.
+      if (els.uploadCancel.disabled) return;
+      closeUploadModal();
+    });
+  });
+}
+if (els.uploadFileInput) {
+  els.uploadFileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) setUploadFile(file);
+  });
+}
+if (els.uploadDrop) {
+  els.uploadDrop.addEventListener("click", (e) => {
+    // Clicking the label triggers the input via for=, but clicks on inner
+    // elements bubble strangely; normalize.
+    if (e.target.tagName !== "INPUT") {
+      e.preventDefault();
+      els.uploadFileInput.click();
+    }
+  });
+  els.uploadDrop.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    els.uploadDrop.classList.add("dragover");
+  });
+  els.uploadDrop.addEventListener("dragleave", () => {
+    els.uploadDrop.classList.remove("dragover");
+  });
+  els.uploadDrop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    els.uploadDrop.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!file.type.includes("pdf") && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast("Only PDF files are supported", "error");
+      return;
+    }
+    setUploadFile(file);
+  });
+}
+if (els.uploadTitle) {
+  els.uploadTitle.addEventListener("input", refreshUploadSubmit);
+}
+if (els.uploadSubmit) {
+  els.uploadSubmit.addEventListener("click", submitUpload);
+}
+
+// Close upload modal on Escape (mirrors the drawer behavior)
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.uploadModal.hidden && !els.uploadCancel.disabled) {
+    closeUploadModal();
+  }
+});
+
 // ---------- bootstrap ----------
 loadProfile();
-computeReadinessAfterExtract();
+loadTemplates();   // render the doc list dynamically; computeReadiness + updateGenerateBar fire on completion
 updateGenerateBar();

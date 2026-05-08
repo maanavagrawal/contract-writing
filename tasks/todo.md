@@ -950,6 +950,30 @@ ship. Read this alongside the plan during implementation.
     smoke test, /NeedAppearances flag.
   - One walker fix during implementation: a kid that's both `/Subtype=/Widget`
     AND has `/T` is a self-widgeted leaf, not a pure annotation kid.
+- [x] **Pillar 2 chunk 6 (MVP) shipped** — 2026-05-08. Frontend wired to the
+  dynamic backend.
+  - Hardcoded 4-doc list in index.html replaced with a runtime
+    `loadTemplates()` call to `/api/templates`. Cards render dynamically
+    with checkbox state preserved across re-renders. IL defaults pre-checked
+    by default; custom uploads auto-check on completion.
+  - "Upload template…" button below the doc list opens a modal with
+    drag-drop or click-to-browse. Title auto-suggests from filename.
+    Submit button disabled until both file + title present.
+  - During upload: modal swaps to a 3-stage checklist (Reading PDF →
+    Extracting form fields → Asking AI to map fields) with an indeterminate
+    progress bar. Cancel disabled mid-upload to avoid orphan rows; Esc
+    blocked too. Hint copy says "Up to a minute on large forms."
+  - Custom (non-default) doc cards get a delete button on hover that
+    confirms then calls DELETE /api/templates/<id>.
+  - Readiness pills: IL defaults still use the per-doc required-fields
+    heuristic; custom templates show "awaiting extraction" before extract
+    and "ready" after.
+  - Deferred to a later iteration: the dedicated `/templates/<id>/review`
+    mapping review UI with PDF.js + canvas overlay (per design plan).
+    User reviews the AI's mapping by editing the form on the left after
+    extraction; wrong canonical mappings can be fixed by editing the
+    extracted values directly.
+
 - [x] **Pillar 2 chunk 5 shipped** — 2026-05-08. Dynamic-schema extraction.
   `/api/extract` now accepts `active_template_ids` (comma-separated). For
   each active template with `extra_fields`, the endpoint builds a Pydantic

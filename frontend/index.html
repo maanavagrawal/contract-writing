@@ -243,82 +243,19 @@
         </div>
 
         <div class="selection-mode" id="selection-mode">
-        <div class="doc-list">
-          <article class="doc-card" data-doc="multiboard">
-            <label class="doc-check">
-              <input type="checkbox" checked />
-              <span class="check-box"></span>
-            </label>
-            <div class="doc-body">
-              <div class="doc-row">
-                <h3 class="doc-title">Multi-Board Residential Contract 8.0</h3>
-                <span class="readiness readiness-pending">awaiting extraction</span>
-              </div>
-              <p class="doc-sub">14-page Illinois sale contract — buyer/seller, price, contingencies, closing.</p>
-              <div class="doc-meta">
-                <span class="meta-pill">sale</span>
-                <span class="meta-pill">14 pages</span>
-                <span class="meta-pill ready">ready</span>
-              </div>
-            </div>
-          </article>
+        <div class="doc-list" id="doc-list">
+          <!-- doc cards rendered dynamically from /api/templates -->
+          <div class="doc-list-loading" id="doc-list-loading">
+            <span class="btn-spinner"></span>
+            <span class="hint">loading templates…</span>
+          </div>
+        </div>
 
-          <article class="doc-card" data-doc="tenant_rep">
-            <label class="doc-check">
-              <input type="checkbox" checked />
-              <span class="check-box"></span>
-            </label>
-            <div class="doc-body">
-              <div class="doc-row">
-                <h3 class="doc-title">Compass Tenant Representation Agreement</h3>
-                <span class="readiness readiness-pending">awaiting extraction</span>
-              </div>
-              <p class="doc-sub">Exclusive tenant rep — client info, term, commission, dual agency election.</p>
-              <div class="doc-meta">
-                <span class="meta-pill">lease</span>
-                <span class="meta-pill">4 pages</span>
-                <span class="meta-pill ready">ready</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="doc-card" data-doc="lease_abstract">
-            <label class="doc-check">
-              <input type="checkbox" checked />
-              <span class="check-box"></span>
-            </label>
-            <div class="doc-body">
-              <div class="doc-row">
-                <h3 class="doc-title">Lease Abstract</h3>
-                <span class="readiness readiness-pending">awaiting extraction</span>
-              </div>
-              <p class="doc-sub">One-page summary — property, dates, rent, commission, concessions.</p>
-              <div class="doc-meta">
-                <span class="meta-pill">lease</span>
-                <span class="meta-pill">1 page</span>
-                <span class="meta-pill ready">ready</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="doc-card" data-doc="lease_invoice">
-            <label class="doc-check">
-              <input type="checkbox" checked />
-              <span class="check-box"></span>
-            </label>
-            <div class="doc-body">
-              <div class="doc-row">
-                <h3 class="doc-title">Compass Lease Invoice</h3>
-                <span class="readiness readiness-pending">awaiting extraction</span>
-              </div>
-              <p class="doc-sub">Commission invoice mailed to landlord — property, tenant, amount due.</p>
-              <div class="doc-meta">
-                <span class="meta-pill">lease</span>
-                <span class="meta-pill">1 page</span>
-                <span class="meta-pill ready">ready</span>
-              </div>
-            </div>
-          </article>
+        <div class="upload-template-row">
+          <button class="btn-ghost btn-sm" id="upload-template-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Upload template…
+          </button>
         </div>
 
         <div class="generate-bar">
@@ -423,6 +360,66 @@
         <div class="drawer-footer">
           <button class="btn-ghost" data-close>Cancel</button>
           <button class="btn-primary" id="profile-save">Save profile</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Upload template modal -->
+    <aside class="modal" id="upload-modal" hidden>
+      <div class="modal-scrim" data-close></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <h2 class="modal-title">Upload template</h2>
+          <button class="btn-icon" data-close aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <p class="modal-sub">Drop a PDF with fillable form fields. AI will propose how to map each field; you review before it goes live.</p>
+
+        <div class="modal-body" id="upload-form">
+          <label class="upload-drop-zone" id="upload-drop">
+            <input type="file" id="upload-file-input" accept="application/pdf" hidden />
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <div class="upload-drop-text">
+              <strong id="upload-drop-primary">Drop PDF here, or click to browse</strong>
+              <span class="hint">Must have fillable form fields (AcroForm). No scans or images.</span>
+            </div>
+          </label>
+
+          <label class="field" style="margin-top: 16px;">
+            <span class="field-label">Title</span>
+            <input type="text" id="upload-title" placeholder="e.g. Pet Addendum" />
+          </label>
+        </div>
+
+        <!-- Staged checklist shown during upload -->
+        <div class="modal-body" id="upload-progress" hidden>
+          <div class="stage-list">
+            <div class="stage" data-stage="read">
+              <span class="stage-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span>Reading PDF</span>
+            </div>
+            <div class="stage" data-stage="extract">
+              <span class="stage-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              <span id="stage-extract-label">Extracting form fields</span>
+            </div>
+            <div class="stage" data-stage="map" data-state="active">
+              <span class="stage-icon"><span class="btn-spinner" style="width:12px;height:12px;border-width:2px;"></span></span>
+              <span>Asking AI to map fields…</span>
+            </div>
+          </div>
+          <div class="progress-bar" style="margin-top: 14px;">
+            <div class="progress-bar-fill indeterminate"></div>
+          </div>
+          <p class="hint" style="margin-top: 10px;">Up to a minute on large forms. Don't close the tab.</p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-ghost" data-close id="upload-cancel">Cancel</button>
+          <button class="btn-primary" id="upload-submit" disabled>
+            <span class="btn-label">Upload</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
         </div>
       </div>
     </aside>
