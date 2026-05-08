@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Paperwork — Real Estate Automator</title>
+    <title>memoir — Real estate paperwork, automated</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Spectral:ital,wght@0,500;0,600;1,500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
@@ -15,10 +15,9 @@
   <body>
     <header class="topbar">
       <div class="topbar-left">
-        <div class="logo-mark"></div>
         <div class="logo-text">
-          <span class="logo-title">Paperwork</span>
-          <span class="logo-sub">Real estate automator</span>
+          <span class="logo-title">memoir<span class="logo-mark" aria-hidden="true"></span></span>
+          <span class="logo-sub">Real estate paperwork, automated</span>
         </div>
       </div>
       <div class="topbar-right">
@@ -77,8 +76,11 @@
             <span class="fields-status" id="fields-status">Review before generating</span>
           </div>
 
-          <div class="field-group">
-            <div class="field-group-label">Property</div>
+          <details class="field-group" data-group="property" open>
+            <summary>
+              <span class="field-group-label-text">Property</span>
+              <span class="field-group-count" data-count></span>
+            </summary>
             <div class="field-row">
               <label class="field">
                 <span class="field-label">Address</span>
@@ -120,10 +122,13 @@
                 </select>
               </label>
             </div>
-          </div>
+          </details>
 
-          <div class="field-group">
-            <div class="field-group-label">Transaction</div>
+          <details class="field-group" data-group="transaction" open>
+            <summary>
+              <span class="field-group-label-text">Transaction</span>
+              <span class="field-group-count" data-count></span>
+            </summary>
             <div class="field-row">
               <label class="field">
                 <span class="field-label">Type</span>
@@ -164,10 +169,13 @@
                 <input type="text" data-path="earnest_money" placeholder="$" />
               </label>
             </div>
-          </div>
+          </details>
 
-          <div class="field-group">
-            <div class="field-group-label">Parties</div>
+          <details class="field-group" data-group="parties" open>
+            <summary>
+              <span class="field-group-label-text">Parties</span>
+              <span class="field-group-count" data-count></span>
+            </summary>
             <div class="field-row">
               <label class="field">
                 <span class="field-label">Tenant / buyer name(s)</span>
@@ -196,10 +204,13 @@
                 <input type="email" data-path="landlord_billing_email" />
               </label>
             </div>
-          </div>
+          </details>
 
-          <div class="field-group">
-            <div class="field-group-label">Compensation</div>
+          <details class="field-group" data-group="compensation">
+            <summary>
+              <span class="field-group-label-text">Compensation</span>
+              <span class="field-group-count" data-count></span>
+            </summary>
             <div class="field-row two">
               <label class="field">
                 <span class="field-label">Commission</span>
@@ -210,10 +221,13 @@
                 <input type="text" data-path="retainer" placeholder="$0" />
               </label>
             </div>
-          </div>
+          </details>
 
-          <div class="field-group">
-            <div class="field-group-label">Buyer's current residence (sale)</div>
+          <details class="field-group" data-group="buyer_residence">
+            <summary>
+              <span class="field-group-label-text">Buyer's current residence (sale)</span>
+              <span class="field-group-count" data-count></span>
+            </summary>
             <div class="field-row">
               <label class="field">
                 <span class="field-label">Address</span>
@@ -236,7 +250,7 @@
                 <input type="text" data-path="buyer_zip" />
               </label>
             </div>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -266,10 +280,7 @@
         <div class="generate-bar">
           <div class="generate-summary" id="generate-summary">4 selected · 0 ready</div>
           <button class="btn-primary btn-lg" id="generate-btn" disabled>
-            <span class="btn-label">
-              Generate documents
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </span>
+            <span class="btn-label">Pick a document</span>
             <span class="btn-spinner" hidden></span>
           </button>
         </div>

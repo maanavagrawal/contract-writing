@@ -1,28 +1,38 @@
-/* ---------- tokens ---------- */
+/* ---------- tokens ----------
+   memoir palette: warm off-black bg with a gradient through the accent
+   amber. Surfaces step up subtly through three levels so cards read
+   distinctly from page without harsh borders. Accent shifts a touch
+   warmer than v1 to feel less like a status pill, more like a brand. */
 :root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --surface-2: #161616;
-  --surface-3: #1c1c1c;
-  --border: #232323;
-  --border-strong: #2e2e2e;
-  --border-hover: #3a3a3a;
+  --bg: #0b0a09;            /* warm near-black (was #0a0a0a) */
+  --surface: #15130f;        /* step up, faint warm tint */
+  --surface-2: #1c1a15;
+  --surface-3: #25221c;
+  --border: #2a261f;
+  --border-strong: #3a342b;
+  --border-hover: #4a4338;
 
-  --text: #ededed;
-  --text-muted: #8a8a8a;
-  --text-subtle: #5a5a5a;
+  --text: #f1ebe1;           /* slightly warm white reads richer than pure ededed */
+  --text-muted: #968d7d;
+  --text-subtle: #635c52;
 
-  --accent: #e8b04b;
-  --accent-soft: #e8b04b18;
-  --accent-hover: #f0bd60;
+  --accent: #e8a854;         /* warmer amber, less acidic than #e8b04b */
+  --accent-soft: #e8a85418;
+  --accent-hover: #f3b669;
+  --accent-strong: #e8a85430;
+  --accent-deep: #b4762d;    /* for gradient stops */
 
-  --success: #6ed18f;
-  --success-soft: #6ed18f14;
-  --success-strong: #6ed18f30;
-  --warning: #f0b94b;
-  --warning-soft: #f0b94b14;
+  --success: #7dc99a;
+  --success-soft: #7dc99a14;
+  --success-strong: #7dc99a30;
+  --warning: #e8a854;
+  --warning-soft: #e8a85414;
   --danger: #e87a7a;
   --danger-soft: #e87a7a14;
+
+  /* Focus ring distinct from accent so accent keeps its single role */
+  --focus-ring: #6b8ec9;
+  --focus-ring-soft: #6b8ec924;
 
   --radius-sm: 6px;
   --radius: 10px;
@@ -30,6 +40,7 @@
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Spectral", "Iowan Old Style", "Cambria", Georgia, serif;
 }
 
 * { box-sizing: border-box; }
@@ -44,6 +55,15 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Soft warm-amber wash at the very top of the page so the palette
+     reads as deliberate (warm dark + amber) rather than neutral. */
+  background-image:
+    radial-gradient(
+      ellipse 1200px 500px at 50% -200px,
+      rgba(232, 168, 84, 0.06),
+      transparent 60%
+    );
+  background-attachment: fixed;
 }
 
 input, textarea, select, button { font-family: inherit; }
@@ -63,24 +83,44 @@ input, textarea, select, button { font-family: inherit; }
 
 .topbar-left { display: flex; align-items: center; gap: 12px; }
 
+/* memoir wordmark: serif italic for the brand, lowercase, paired with
+   a soft amber dot. The mark is the punctuation period at the end of
+   "memoir." that lifts the wordmark away from a generic logotype. */
+/* Inline period after "memoir" — fits naturally with the serif italic
+   wordmark, glows softly to read as the brand mark not just a dot. */
 .logo-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), #c8893b);
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-strong);
+  margin-left: 3px;
+  vertical-align: baseline;
   position: relative;
+  bottom: 1px;
 }
-.logo-mark::after {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  border-radius: 3px;
-  background: var(--bg);
-}
+.logo-mark::after { content: none; }
 
-.logo-text { display: flex; flex-direction: column; line-height: 1.1; }
-.logo-title { font-weight: 600; font-size: 14px; letter-spacing: -0.01em; }
-.logo-sub { font-size: 11px; color: var(--text-subtle); }
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+  gap: 2px;
+}
+.logo-title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.logo-sub {
+  font-size: 10.5px;
+  color: var(--text-subtle);
+  letter-spacing: 0.02em;
+}
 
 /* ---------- workspace ---------- */
 .workspace {
@@ -101,20 +141,23 @@ input, textarea, select, button { font-family: inherit; }
   border-right: 1px solid var(--border);
 }
 
-.pane-header { margin-bottom: 18px; }
+.pane-header { margin-bottom: 20px; }
 .pane-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
   color: var(--text);
-  margin: 0 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 .pane-sub {
   font-size: 13px;
   color: var(--text-muted);
   margin: 0;
-  max-width: 52ch;
+  max-width: 56ch;
+  line-height: 1.55;
 }
 
 /* ---------- notes input ---------- */
@@ -222,7 +265,7 @@ input, textarea, select, button { font-family: inherit; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
   color: #1a1206;
   border: 0;
   padding: 8px 14px;
@@ -230,14 +273,19 @@ input, textarea, select, button { font-family: inherit; }
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s ease, transform 0.08s ease;
+  transition: background 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
   position: relative;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
 }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f6c07c, var(--accent-hover));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 2px 6px rgba(232, 168, 84, 0.25);
+}
 .btn-primary:active:not(:disabled) { transform: translateY(1px); }
 .btn-primary:disabled {
   background: var(--surface-3);
   color: var(--text-subtle);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
@@ -324,17 +372,57 @@ input, textarea, select, button { font-family: inherit; }
   font-family: var(--font-mono);
 }
 
+/* Collapsible field group. Native <details>/<summary> so it's keyboard-
+   accessible and works without JS for the toggle. The summary line shows
+   a count of filled fields ("3 of 5") so users can see at a glance which
+   sections still need work without expanding everything. */
 .field-group {
-  margin-bottom: 18px;
+  margin-bottom: 8px;
+  border-top: 1px solid var(--border);
 }
-.field-group-label {
-  font-size: 11px;
+.field-group:first-of-type { border-top: 0; }
+.field-group[open] { padding-bottom: 8px; }
+
+.field-group > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-subtle);
-  margin-bottom: 8px;
+  color: var(--text-muted);
   font-weight: 500;
+  user-select: none;
 }
+.field-group > summary::-webkit-details-marker { display: none; }
+.field-group > summary::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.18s ease;
+  margin-left: 2px;
+}
+.field-group[open] > summary::before {
+  transform: rotate(45deg);
+}
+.field-group > summary:hover { color: var(--text); }
+
+.field-group-label-text { flex: 1; min-width: 0; }
+.field-group-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-subtle);
+}
+.field-group-count[data-state="full"] { color: var(--success); }
+.field-group-count[data-state="partial"] { color: var(--accent); }
 
 .field-row { display: grid; gap: 8px; margin-bottom: 8px; }
 .field-row.two { grid-template-columns: 1fr 1fr; }
@@ -359,12 +447,17 @@ input, textarea, select, button { font-family: inherit; }
   padding: 8px 10px;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+.field input:hover,
+.field select:hover {
+  border-color: var(--border-hover);
 }
 .field input:focus,
 .field select:focus {
-  border-color: var(--accent);
+  border-color: var(--focus-ring);
   background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--focus-ring-soft);
 }
 
 /* fields filled by extraction get a subtle amber tint on the left edge */
@@ -377,22 +470,30 @@ input, textarea, select, button { font-family: inherit; }
 .doc-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
+/* Compact doc cards: one row by default (checkbox + title + status pill).
+   Subtitle and meta pills hide until hover, so a list of 4-10 templates
+   stays scannable. The card is the click target everywhere except the
+   actual checkbox/delete button. */
 .doc-card {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 14px;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 18px;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  padding: 10px 14px;
+  transition: border-color 0.12s ease, background 0.12s ease, padding 0.18s ease;
   position: relative;
 }
-.doc-card:hover { border-color: var(--border-hover); }
-.doc-card.unchecked { opacity: 0.5; }
+.doc-card:hover {
+  border-color: var(--border-hover);
+  padding: 14px;
+}
+.doc-card.unchecked { opacity: 0.55; }
 .doc-card.generated {
   border-color: var(--success-strong);
   background: linear-gradient(180deg, var(--success-soft), transparent 80%);
@@ -434,21 +535,47 @@ input, textarea, select, button { font-family: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 4px;
 }
 .doc-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 500;
   margin: 0;
   letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* Subtitle + meta hide until hover so the resting state is one row per
+   card. Hover/focus expands the card to show full context. */
 .doc-sub {
   font-size: 12.5px;
   color: var(--text-muted);
-  margin: 0 0 10px;
+  margin: 0;
   line-height: 1.5;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
 }
-.doc-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.doc-card:hover .doc-sub {
+  max-height: 60px;
+  opacity: 1;
+  margin: 6px 0 0;
+}
+.doc-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
+}
+.doc-card:hover .doc-meta {
+  max-height: 28px;
+  opacity: 1;
+  margin-top: 8px;
+}
 .meta-pill {
   font-size: 11px;
   color: var(--text-subtle);
@@ -929,20 +1056,44 @@ input, textarea, select, button { font-family: inherit; }
 .selection-mode[hidden],
 .preview-mode[hidden] { display: none !important; }
 
-/* ---------- generate bar ---------- */
+/* ---------- generate bar ----------
+   Sticky bottom strip on the right pane. Generate is the single most
+   important action on this screen; making it large + bright + stuck to
+   the bottom of the pane removes the "where do I click next" pause. */
 .generate-bar {
-  margin-top: 20px;
-  padding-top: 18px;
+  position: sticky;
+  bottom: -32px;            /* hugs the bottom of the .pane (which has padding-bottom: 32px) */
+  margin: 24px -28px -32px;  /* break out of pane padding so the strip is full-width */
+  padding: 14px 28px;
   border-top: 1px solid var(--border);
+  background: var(--bg);     /* solid bg so content above can scroll under it */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  z-index: 5;
 }
 .generate-summary {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+}
+.generate-summary strong {
+  color: var(--text);
+  font-weight: 500;
+}
+/* Larger, more confident Generate primary button */
+#generate-btn {
+  padding: 11px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+#generate-btn:disabled {
+  /* Keep it visible-but-clearly-off so users notice the action exists */
+  opacity: 1;
+  background: var(--surface-3);
+  color: var(--text-subtle);
 }
 
 /* ---------- drawer ---------- */

@@ -499,6 +499,33 @@ function setReadiness(card, level, text) {
   pill.textContent = text;
 }
 
+// Per-group fill counter. Each <details class="field-group"> gets a
+// ".field-group-count" badge showing "3 of 5" — filled / total inputs in
+// that group. Color shifts: subtle when empty, amber when partial, green
+// when full. Runs on every input event so it stays live as the user types.
+function updateFieldGroupCounts() {
+  const groups = document.querySelectorAll("details.field-group");
+  groups.forEach((g) => {
+    const inputs = g.querySelectorAll("input, select, textarea");
+    if (inputs.length === 0) return;
+    let filled = 0;
+    inputs.forEach((el) => {
+      const v = (el.value || "").trim();
+      if (v) filled++;
+    });
+    const badge = g.querySelector(".field-group-count");
+    if (!badge) return;
+    badge.textContent = `${filled} of ${inputs.length}`;
+    if (filled === 0) {
+      badge.dataset.state = "empty";
+    } else if (filled === inputs.length) {
+      badge.dataset.state = "full";
+    } else {
+      badge.dataset.state = "partial";
+    }
+  });
+}
+
 function computeReadinessAfterExtract() {
   const fields = collectFields();
   const profile = readProfileFromInputs();
@@ -555,7 +582,29 @@ function updateGenerateBar() {
     const pill = card.querySelector(".readiness");
     if (pill?.classList.contains("readiness-ready")) ready++;
   });
-  els.generateSummary.textContent = `${selected} selected · ${extracted ? ready + " ready" : "0 ready"}`;
+  // Bake the count into the button label so the primary action tells you
+  // exactly what it's about to do. Summary line carries the "ready" status
+  // separately for users who care about the pre-flight check.
+  const docWord = selected === 1 ? "document" : "documents";
+  const btnLabel = els.generateBtn.querySelector(".btn-label");
+  if (btnLabel) {
+    if (!extracted) {
+      btnLabel.textContent = "Extract first to generate";
+    } else if (selected === 0) {
+      btnLabel.textContent = "Pick a document";
+    } else {
+      btnLabel.textContent = `Generate ${selected} ${docWord}`;
+    }
+  }
+  if (extracted) {
+    els.generateSummary.innerHTML = ready === selected
+      ? `<strong>All ${selected} ready.</strong> Review fields, then generate.`
+      : `<strong>${ready} of ${selected} ready.</strong> Fill remaining fields above.`;
+  } else {
+    els.generateSummary.innerHTML = selected === 0
+      ? "Pick at least one document above."
+      : `<strong>${selected} ${docWord}</strong> picked. Add notes, then extract.`;
+  }
   els.generateBtn.disabled = !extracted || selected === 0;
 }
 
@@ -975,6 +1024,7 @@ async function runExtract() {
     els.fields.hidden = false;
     populateFields(data);
     computeReadinessAfterExtract();
+    updateFieldGroupCounts();
     updateGenerateBar();
     els.fields.scrollIntoView({ behavior: "smooth", block: "nearest" });
     toast("Fields extracted — review before generating", "success", 2500);
@@ -1071,6 +1121,7 @@ els.notes.addEventListener("keydown", (e) => {
 
 els.fields.addEventListener("input", () => {
   computeReadinessAfterExtract();
+  updateFieldGroupCounts();
   updateGenerateBar();
 });
 
