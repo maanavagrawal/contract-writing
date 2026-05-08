@@ -252,3 +252,41 @@ class EditResponse(BaseModel):
     can update the page images and any field defaults that depend on each other."""
     document: GeneratedDoc
     preview: PreviewResponse
+
+
+# ---- Template management (Pillar 2) ----
+
+class TemplateListItem(BaseModel):
+    """One row in the GET /api/templates response. Light shape — the full
+    mapping JSON is fetched separately when the user opens a template."""
+    id: str
+    title: str
+    status: str                       # pending_review | ready | needs_attention
+    is_default: bool
+    created_at: str
+    extra_field_count: int
+
+
+class TemplateListResponse(BaseModel):
+    templates: list[TemplateListItem]
+
+
+class ExtraFieldDTO(BaseModel):
+    """Surface-area version of models.ExtraField for the API. Same shape; we
+    keep two copies to avoid forcing main.py to import the persistence
+    package's models in API responses."""
+    name: str
+    type: str
+    description: str
+    pdf_field: str
+
+
+class TemplateUploadResponse(BaseModel):
+    """What POST /api/templates/upload returns once the AI mapping proposal
+    is in. The frontend opens a review UI from this payload."""
+    id: str
+    title: str
+    status: str
+    mapping: dict                     # MappingFile.model_dump(by_alias=True)
+    extra_fields: list[ExtraFieldDTO]
+    field_count: int                  # how many AcroForm fields the AI saw

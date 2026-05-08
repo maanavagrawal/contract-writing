@@ -19,7 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # picks up OPENAI_API_KEY from .env
 
-from .db import run_migrations
+from . import models, templates as templates_mod
+from .db import get_conn, run_migrations
 from .extract import extract_fields
 from .generate import InvalidMapping, UnknownDocument, fill_document
 from .pdf_fill import fill_pdf
@@ -27,6 +28,7 @@ from .pdf_render import render_pdf_for_edit
 from .schema import (
     EditRequest,
     EditResponse,
+    ExtraFieldDTO,
     FieldOverlayDTO,
     GeneratedDoc,
     GeneratedDocFailure,
@@ -35,6 +37,9 @@ from .schema import (
     PageRenderDTO,
     PreviewRequest,
     PreviewResponse,
+    TemplateListItem,
+    TemplateListResponse,
+    TemplateUploadResponse,
     TransactionFields,
 )
 
@@ -223,6 +228,138 @@ async def api_health() -> dict:
 
 # Static frontend, mounted last so /api/* routes win.
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+
+@app.get("/api/templates", response_model=TemplateListResponse)
+async def api_list_templates() -> TemplateListResponse:
+    """List every template the current user can use: their own + IL defaults.
+    Light response shape (no mapping JSON, no extras detail) — clients fetch
+    the full mapping per-template when they need it."""
+    with get_conn() as conn:
+        rows = models.list_templates(conn)
+    return TemplateListResponse(templates=[
+        TemplateListItem(
+            id=t.id,
+            title=t.title,
+            status=t.status,
+            is_default=t.is_default,
+            created_at=t.created_at,
+            extra_field_count=len(t.extra_fields),
+        )
+        for t in rows
+    ])
+
+
+@app.post("/api/templates/upload", response_model=TemplateUploadResponse)
+async def api_upload_template(
+    title: str = Form(...),
+    pdf: UploadFile = File(...),
+) -> TemplateUploadResponse:
+    """Accept a PDF, validate, ask GPT to propose a mapping, persist
+    everything, and return the proposal so the frontend can open the
+    mapping-review UI.
+
+    Sync (per the eng review): users see a spinner; ~30-60s for large
+    contracts. Async/polling can come later if real users complain.
+    """
+    if not pdf.content_type or "pdf" not in pdf.content_type.lower():
+        # Be forgiving — Safari sends application/pdf, Chrome sometimes
+        # application/octet-stream. Trust the extension as a fallback.
+        if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
+            raise HTTPException(400, "upload must be a .pdf file")
+
+    pdf_bytes = await pdf.read()
+    if not pdf_bytes:
+        raise HTTPException(400, "uploaded file is empty")
+    # Reuse the same caps as /api/preview so a giant PDF can't hang the worker.
+    _validate_pdf_bytes(pdf_bytes)
+
+    # Validate the PDF has the AcroForm we need.
+    try:
+        reader = templates_mod.validate_pdf(pdf_bytes)
+    except templates_mod.TemplateUploadError as e:
+        raise HTTPException(400, str(e))
+
+    # Collect what we hand to the AI: every field + neighbor text.
+    field_descs = templates_mod.collect_field_descriptions(reader)
+    if not field_descs:
+        raise HTTPException(400, "PDF has no fillable fields after parsing")
+
+    template_id = models.new_id()
+    pdf_path = templates_mod.save_uploaded_pdf(pdf_bytes, template_id)
+
+    # AI mapping proposal. This is the slow part (~30-60s on Multi-Board).
+    try:
+        proposal = await templates_mod.propose_mapping(field_descs)
+    except templates_mod.AIMappingError as e:
+        # Clean up the saved PDF — no point leaving an orphaned file when
+        # the mapping never got created.
+        try:
+            pdf_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(502, f"AI mapping failed: {e}")
+
+    # Translate proposal into MappingFile + ExtraField list.
+    mapping_file, extras = templates_mod.proposal_to_mapping_file(
+        proposal,
+        title=title,
+        source_pdf_filename=f"{template_id}.pdf",
+        filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
+    )
+    mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
+
+    template_row = templates_mod.build_template_row(
+        template_id=template_id,
+        title=title,
+        source_pdf_path=pdf_path,
+        mapping_path=mapping_path,
+        extras=extras,
+        user_id=models.DEFAULT_USER_ID,
+    )
+    with get_conn() as conn:
+        models.insert_template(conn, template_row)
+
+    return TemplateUploadResponse(
+        id=template_id,
+        title=title,
+        status=template_row.status,
+        mapping=mapping_file.model_dump(by_alias=True),
+        extra_fields=[
+            ExtraFieldDTO(
+                name=e.name, type=e.type,
+                description=e.description, pdf_field=e.pdf_field,
+            )
+            for e in extras
+        ],
+        field_count=len(field_descs),
+    )
+
+
+@app.delete("/api/templates/{template_id}", status_code=204)
+async def api_delete_template(template_id: str):
+    """Delete a custom template. Defaults are protected by the SQL guard
+    in models.delete_template — attempting to delete a default returns
+    silently with no rows affected, which we surface as 403."""
+    with get_conn() as conn:
+        existing = models.get_template(conn, template_id)
+        if existing is None:
+            raise HTTPException(404, f"template {template_id!r} not found")
+        if existing.is_default:
+            raise HTTPException(403, "default templates cannot be deleted")
+        models.delete_template(conn, template_id)
+        # Best-effort filesystem cleanup. Absolute paths (test fixtures) get
+        # used as-is; relative paths resolve against repo root.
+        repo_root = Path(__file__).resolve().parent.parent
+        for path_str in (existing.source_pdf_path, existing.mapping_path):
+            p = Path(path_str)
+            if not p.is_absolute():
+                p = repo_root / p
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    return Response(status_code=204)
 
 
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
