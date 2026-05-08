@@ -171,3 +171,51 @@ class GeneratedDoc(BaseModel):
 
 class GenerateResponse(BaseModel):
     documents: list[GeneratedDoc]
+
+
+# ---- Edit-in-preview ----
+
+class FieldOverlayDTO(BaseModel):
+    """One AcroForm field with everything the frontend needs to render an
+    editable overlay on top of the rendered PDF page image."""
+    name: str
+    field_type: str                # "/Tx" | "/Btn" | "/Ch" | "/Sig"
+    page: int                      # 1-based
+    rect_px: tuple[float, float, float, float]  # x, y, width, height in PNG pixels
+    value: str
+    # /Btn appearance state names (e.g. ["/Off", "/On"] for a simple checkbox,
+    # ["/Off", "/Choice1", "/Choice2", ...] for a radio group). The frontend
+    # uses this to detect radios so it can render them as read-only instead
+    # of a checkbox that would clobber the actual selection on round-trip.
+    states: list[str] = []
+
+
+class PageRenderDTO(BaseModel):
+    page: int
+    width_px: int
+    height_px: int
+    image_b64: str
+    content_type: str = "image/png"
+
+
+class PreviewRequest(BaseModel):
+    base64_pdf: str
+
+
+class PreviewResponse(BaseModel):
+    pages: list[PageRenderDTO]
+    fields: list[FieldOverlayDTO]
+
+
+class EditRequest(BaseModel):
+    """Apply user edits to a previously-generated PDF. The frontend sends back
+    only the dotted names + new values; we re-fill on top of the source PDF."""
+    base64_pdf: str
+    edits: dict[str, str]
+
+
+class EditResponse(BaseModel):
+    """Round-trip the edited PDF as base64 + a fresh preview render so the UI
+    can update the page images and any field defaults that depend on each other."""
+    document: GeneratedDoc
+    preview: PreviewResponse

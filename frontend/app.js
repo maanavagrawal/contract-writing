@@ -1,16 +1,18 @@
 // Frontend logic — wires the dashboard to the FastAPI backend, with an
-// in-place PDF.js preview after generation.
+// in-place PDF preview after generation.
 //
 // Flow:
 //   notes + images → POST /api/extract → populate parsed-fields panel
 //   parsed fields + agent profile + checked docs → POST /api/generate
 //     → right pane swaps from selection-mode to preview-mode with one tab
-//        per generated doc and a PDF.js render of the active doc
+//        per generated doc and an <iframe> render of the active doc
 //   "← Edit selection" returns to selection-mode (cache preserved)
-
-import * as pdfjs from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
-pdfjs.GlobalWorkerOptions.workerSrc =
-  "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+//
+// Why <iframe> over PDF.js: pypdf sets /V on the AcroForm but doesn't generate
+// appearance streams. PDF.js's canvas render shows blank fields; manually
+// overlaying the annotation layer mis-aligns. Browser-built-in PDF viewers
+// (Chrome, Safari, Firefox) honor /NeedAppearances=true and render filled
+// values correctly with zero extra code.
 
 const IMPLEMENTED_DOCS = new Set(["lease_invoice", "lease_abstract", "tenant_rep", "multiboard"]);
 
@@ -41,6 +43,8 @@ const els = {
   previewMode: document.getElementById("preview-mode"),
   backBtn: document.getElementById("back-to-selection"),
   regenerateBtn: document.getElementById("regenerate-btn"),
+  saveEditsBtn: document.getElementById("save-edits-btn"),
+  saveEditsLabel: document.getElementById("save-edits-label"),
   tabStrip: document.getElementById("tab-strip"),
   pagesScroll: document.getElementById("pages-scroll"),
   pagesLoading: document.getElementById("pages-loading"),
@@ -52,7 +56,7 @@ let extracted = false;
 // Preview-mode state
 let lastGenerated = []; // last /api/generate response (array of {document, filename, base64, content_type})
 let activeDocKey = null;
-const renderedPages = new Map(); // docKey → array of <div.pdf-page> nodes (cache)
+// Per-doc preview state (image renders + pending edits) lives in docState below.
 
 // ---------- toasts ----------
 function toast(message, type = "info", ms = 4000) {
@@ -249,37 +253,230 @@ function setLoading(button, isLoading) {
   button.disabled = isLoading;
 }
 
-// ---------- PDF.js preview ----------
-function base64ToArrayBuffer(b64) {
-  const bin = atob(b64);
-  const buf = new ArrayBuffer(bin.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
-  return buf;
+// ---------- PDF preview (image + overlay inputs) ----------
+// Each page is rendered server-side to a PNG (pypdfium2). The frontend stacks
+// the page images and absolutely-positions <input>/<textarea>/<input type=checkbox>
+// over each AcroForm field rect. Edits flow into pendingEdits; a Save button
+// posts them to /api/edit which re-fills the PDF and returns a new render.
+
+// Per-doc preview state. docKey -> {base64, preview, pendingEdits, dirty, pages}
+const docState = new Map();
+
+// Maximum CSS width we render the PDF page at (matches the existing canvas cap).
+const PREVIEW_MAX_WIDTH_CSS = 820;
+
+async function fetchPreview(base64Pdf) {
+  const res = await fetch("/api/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64_pdf: base64Pdf }),
+  });
+  if (!res.ok) throw new Error(`preview failed (${res.status})`);
+  return res.json();
+}
+
+function ensureDocState(doc) {
+  let s = docState.get(doc.document);
+  if (!s) {
+    s = {
+      base64: doc.base64,
+      filename: doc.filename,
+      preview: null,
+      pendingEdits: new Map(),
+      dirty: false,
+      pages: null,        // cached DOM nodes
+    };
+    docState.set(doc.document, s);
+  }
+  return s;
+}
+
+function renderFieldOverlay(field, scale, state) {
+  const [x, y, w, h] = field.rect_px;
+  const cssH = h * scale;
+  const node = document.createElement("div");
+  node.className = "pdf-field";
+  node.style.left = `${x * scale}px`;
+  node.style.top = `${y * scale}px`;
+  node.style.width = `${w * scale}px`;
+  node.style.height = `${cssH}px`;
+  // Match input font size to the rendered field height. PDF form blanks are
+  // typically ~14pt tall at 100% scale; we leave 30% headroom so text doesn't
+  // clip vertically.
+  node.style.setProperty("--field-font-size", `${Math.max(9, Math.min(16, cssH * 0.7))}px`);
+
+  const onChange = (newValue) => {
+    if (newValue === field.value) {
+      // User reverted to original; drop from pending edits.
+      state.pendingEdits.delete(field.name);
+    } else {
+      state.pendingEdits.set(field.name, newValue);
+    }
+    state.dirty = state.pendingEdits.size > 0;
+    syncSaveBar(state);
+  };
+
+  if (field.field_type === "/Btn") {
+    // Real checkbox = states are exactly some subset of {/Off, /On}. Radio
+    // groups have additional state names like /Choice1, /Seller's Brokerage,
+    // etc. — toggling those as a checkbox would clobber the real selection
+    // because we'd write /On (which isn't a valid state for that field) and
+    // pdf_fill would set every kid's /AS to /Off. Render those as read-only
+    // until we have proper radio UI in Pillar 2.
+    const states = field.states || [];
+    const isRadio = states.some((s) => s !== "/Off" && s !== "/On");
+    if (isRadio) {
+      node.classList.add("pdf-field-readonly");
+      node.title = "Radio group — edit on the form to the left";
+    } else {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = field.value && field.value !== "/Off" && field.value !== "";
+      cb.addEventListener("change", () => {
+        onChange(cb.checked ? "/On" : "/Off");
+      });
+      node.classList.add("pdf-field-btn");
+      node.appendChild(cb);
+    }
+  } else if (field.field_type === "/Ch") {
+    // Dropdowns/listboxes: backend doesn't currently expose /Opt (the choices)
+    // so we can't render a real <select>. Plain text input would let users
+    // type values that don't match any option, which appear blank in Acrobat.
+    // Read-only marker keeps the form trustworthy.
+    node.classList.add("pdf-field-readonly");
+    node.title = "Dropdown — edit on the form to the left";
+  } else if (field.field_type === "/Sig") {
+    // Signatures aren't editable inline. Show a passive marker so the user
+    // sees where to sign in the downloaded PDF.
+    node.classList.add("pdf-field-sig");
+    node.title = "Signature field — sign in your PDF reader";
+  } else {
+    // Text. Most form blanks are single-line; only treat very tall rects (4+
+    // text lines) as multi-line. h is in PNG pixels at RENDER_SCALE=2, so a
+    // ~14pt line is ~28px; "more than 4 lines" means h > ~120px.
+    const isTall = h > 120;
+    const el = document.createElement(isTall ? "textarea" : "input");
+    if (!isTall) el.type = "text";
+    el.value = field.value || "";
+    el.spellcheck = false;
+    el.addEventListener("input", () => onChange(el.value));
+    node.appendChild(el);
+  }
+  node.dataset.fieldName = field.name;
+  return node;
+}
+
+function buildPagesForState(state) {
+  const fragment = document.createDocumentFragment();
+  // Group fields by page once.
+  const fieldsByPage = new Map();
+  for (const f of state.preview.fields) {
+    if (!fieldsByPage.has(f.page)) fieldsByPage.set(f.page, []);
+    fieldsByPage.get(f.page).push(f);
+  }
+
+  const pageNodes = [];
+  for (const p of state.preview.pages) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "pdf-page";
+    const cssWidth = Math.min(PREVIEW_MAX_WIDTH_CSS, p.width_px);
+    const scale = cssWidth / p.width_px;
+    wrapper.style.width = `${cssWidth}px`;
+    wrapper.style.height = `${p.height_px * scale}px`;
+
+    const img = document.createElement("img");
+    img.className = "pdf-page-img";
+    img.alt = `Page ${p.page}`;
+    img.src = `data:image/png;base64,${p.image_b64}`;
+    wrapper.appendChild(img);
+
+    const overlay = document.createElement("div");
+    overlay.className = "pdf-field-layer";
+    for (const f of fieldsByPage.get(p.page) || []) {
+      overlay.appendChild(renderFieldOverlay(f, scale, state));
+    }
+    wrapper.appendChild(overlay);
+
+    pageNodes.push(wrapper);
+    fragment.appendChild(wrapper);
+  }
+  state.pages = pageNodes;
+  return fragment;
 }
 
 async function renderDocument(doc) {
-  if (renderedPages.has(doc.document)) return renderedPages.get(doc.document);
-  const data = base64ToArrayBuffer(doc.base64);
-  const pdf = await pdfjs.getDocument({ data }).promise;
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  const pages = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 1.5 * dpr });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    canvas.style.width = `${Math.min(820, viewport.width / dpr)}px`;
-    canvas.style.height = "auto";
-    const wrapper = document.createElement("div");
-    wrapper.className = "pdf-page";
-    wrapper.appendChild(canvas);
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-    pages.push(wrapper);
+  const state = ensureDocState(doc);
+  if (state.pages) return state.pages;
+  if (!state.preview) {
+    state.preview = await fetchPreview(state.base64);
   }
-  renderedPages.set(doc.document, pages);
-  return pages;
+  buildPagesForState(state);
+  return state.pages;
+}
+
+function syncSaveBar(state) {
+  // Only show the Save button for the currently active doc.
+  const activeState = activeDocKey ? docState.get(activeDocKey) : null;
+  if (state !== activeState) return;
+  if (!els.saveEditsBtn) return;
+  els.saveEditsBtn.hidden = !state.dirty;
+  if (state.dirty && els.saveEditsLabel) {
+    const n = state.pendingEdits.size;
+    els.saveEditsLabel.textContent = `Save ${n} edit${n === 1 ? "" : "s"}`;
+  }
+}
+
+async function saveEditsForActiveDoc() {
+  if (!activeDocKey) return;
+  const state = docState.get(activeDocKey);
+  if (!state || !state.dirty) return;
+
+  const edits = {};
+  for (const [k, v] of state.pendingEdits) edits[k] = v;
+
+  // Disable the overlay inputs while the save is in flight. Otherwise a user
+  // who keeps typing after clicking Save loses those characters when we
+  // pendingEdits.clear() and rebuild from the server's response.
+  const liveInputs = els.pagesScroll.querySelectorAll(".pdf-field input, .pdf-field textarea");
+  liveInputs.forEach((el) => { el.disabled = true; });
+
+  setLoading(els.saveEditsBtn, true);
+  try {
+    const res = await fetch("/api/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64_pdf: state.base64, edits }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`save failed (${res.status}): ${detail}`);
+    }
+    const data = await res.json();
+    state.base64 = data.document.base64;
+    state.preview = data.preview;
+    state.pendingEdits.clear();
+    state.dirty = false;
+    state.pages = null;
+
+    // Also update lastGenerated so the tab download button gets the new bytes.
+    const inList = lastGenerated.find((d) => d.document === activeDocKey);
+    if (inList) inList.base64 = state.base64;
+
+    // Re-render the active tab from the fresh preview.
+    clearPagesContainer();
+    buildPagesForState(state);
+    state.pages.forEach((p) => els.pagesScroll.appendChild(p));
+    syncSaveBar(state);
+    toast("Edits saved", "success", 2000);
+  } catch (e) {
+    console.error(e);
+    toast(e.message || "save failed", "error");
+    // Re-enable the existing inputs so the user can retry. On the success
+    // path these get replaced with fresh DOM, so this only matters on errors.
+    liveInputs.forEach((el) => { el.disabled = false; });
+  } finally {
+    setLoading(els.saveEditsBtn, false);
+  }
 }
 
 function downloadDoc(doc) {
@@ -338,7 +535,9 @@ async function setActiveTab(docKey) {
   if (!doc) return;
 
   clearPagesContainer();
-  const cached = renderedPages.has(docKey);
+  // If we already have a built page list for this doc we render instantly;
+  // otherwise show the loading spinner while /api/preview comes back.
+  const cached = docState.get(docKey)?.pages != null;
   els.pagesLoading.hidden = cached;
 
   try {
@@ -346,6 +545,8 @@ async function setActiveTab(docKey) {
     if (activeDocKey !== docKey) return; // user switched away mid-render
     pages.forEach((p) => els.pagesScroll.appendChild(p));
     els.pagesScroll.scrollTop = 0;
+    const state = docState.get(docKey);
+    if (state) syncSaveBar(state);
   } catch (e) {
     console.error("preview render failed:", e);
     toast(`Preview render failed for ${FRIENDLY[docKey] || docKey}`, "error");
@@ -364,13 +565,18 @@ function enterPreviewMode(docs) {
   renderTabs(docs);
   els.selectionMode.hidden = true;
   els.previewMode.hidden = false;
+  if (els.saveEditsBtn) els.saveEditsBtn.hidden = true;
 
   setActiveTab(next);
 
-  // Pre-warm cache for the other tabs in the background.
+  // Pre-fetch previews for the other tabs in the background so tab switching
+  // is instant (no spinner).
   for (const d of docs) {
-    if (d.document !== next && !renderedPages.has(d.document)) {
-      renderDocument(d).catch((e) => console.error("background render failed", d.document, e));
+    const state = ensureDocState(d);
+    if (d.document !== next && !state.preview) {
+      fetchPreview(state.base64).then((p) => { state.preview = p; }).catch((e) => {
+        console.error("background preview fetch failed", d.document, e);
+      });
     }
   }
 }
@@ -450,9 +656,11 @@ async function runGenerate(triggerBtn) {
     }
     const data = await res.json();
 
-    // Bust the render cache for any docs we just regenerated so they re-render
-    // with the new content (otherwise we'd show the previous PDF's pages).
-    for (const doc of data.documents) renderedPages.delete(doc.document);
+    // Drop cached preview state for any docs we just regenerated so the new
+    // /V values flow through cleanly.
+    for (const doc of data.documents) {
+      docState.delete(doc.document);
+    }
 
     enterPreviewMode(data.documents);
 
@@ -471,6 +679,9 @@ async function runGenerate(triggerBtn) {
 els.extractBtn.addEventListener("click", runExtract);
 els.generateBtn.addEventListener("click", () => runGenerate(els.generateBtn));
 els.regenerateBtn.addEventListener("click", () => runGenerate(els.regenerateBtn));
+if (els.saveEditsBtn) {
+  els.saveEditsBtn.addEventListener("click", saveEditsForActiveDoc);
+}
 els.backBtn.addEventListener("click", exitPreviewMode);
 
 els.notes.addEventListener("keydown", (e) => {
@@ -481,10 +692,8 @@ els.notes.addEventListener("keydown", (e) => {
 });
 
 els.fields.addEventListener("input", () => {
-  if (extracted) {
-    computeReadinessAfterExtract();
-    updateGenerateBar();
-  }
+  computeReadinessAfterExtract();
+  updateGenerateBar();
 });
 
 document.querySelectorAll(".doc-card input[type='checkbox']").forEach((box) => {
@@ -549,4 +758,5 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- bootstrap ----------
 loadProfile();
+computeReadinessAfterExtract();
 updateGenerateBar();

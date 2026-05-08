@@ -8,18 +8,33 @@ Then open http://localhost:8000.
 """
 from __future__ import annotations
 
+import base64
+import io
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # picks up OPENAI_API_KEY from .env
 
 from .extract import extract_fields
 from .generate import UnknownDocument, fill_document
-from .schema import GenerateRequest, GenerateResponse, TransactionFields
+from .pdf_fill import fill_pdf
+from .pdf_render import render_pdf_for_edit
+from .schema import (
+    EditRequest,
+    EditResponse,
+    FieldOverlayDTO,
+    GeneratedDoc,
+    GenerateRequest,
+    GenerateResponse,
+    PageRenderDTO,
+    PreviewRequest,
+    PreviewResponse,
+    TransactionFields,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT / "frontend"
@@ -63,6 +78,107 @@ async def api_generate(req: GenerateRequest) -> GenerateResponse:
     return GenerateResponse(documents=out)
 
 
+# Defensive caps to keep a runaway render from hanging the worker. The 4 IL
+# templates max out at ~1MB and 15 pages; these limits are 25× headroom.
+_MAX_PDF_BYTES = 25 * 1024 * 1024     # 25MB decoded
+_MAX_PDF_PAGES = 50
+
+
+def _validate_pdf_bytes(pdf_bytes: bytes) -> None:
+    """Raise HTTPException(413) if the input would blow up the renderer."""
+    if len(pdf_bytes) > _MAX_PDF_BYTES:
+        raise HTTPException(413, f"PDF exceeds {_MAX_PDF_BYTES // (1024 * 1024)}MB cap")
+    # Cheap page count: parse just enough metadata to know.
+    from pypdf import PdfReader
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+    except Exception as e:
+        raise HTTPException(400, f"could not parse PDF: {e}")
+    if len(reader.pages) > _MAX_PDF_PAGES:
+        raise HTTPException(413, f"PDF exceeds {_MAX_PDF_PAGES}-page cap")
+
+
+def _build_preview(pdf_bytes: bytes) -> PreviewResponse:
+    """Run the PDF through pypdfium2 + pdf_introspect and shape the result for
+    the frontend overlay. Single source of truth so /api/preview and the
+    preview half of /api/edit stay aligned."""
+    pages, fields = render_pdf_for_edit(pdf_bytes)
+    return PreviewResponse(
+        pages=[
+            PageRenderDTO(
+                page=p.page,
+                width_px=p.width_px,
+                height_px=p.height_px,
+                image_b64=p.image_b64,
+            )
+            for p in pages
+        ],
+        fields=[
+            FieldOverlayDTO(
+                name=f.name,
+                field_type=f.field_type,
+                page=f.page,
+                rect_px=f.rect_px,
+                value=f.value,
+                states=f.states,
+            )
+            for f in fields
+        ],
+    )
+
+
+@app.post("/api/preview", response_model=PreviewResponse)
+async def api_preview(req: PreviewRequest) -> PreviewResponse:
+    try:
+        pdf_bytes = base64.b64decode(req.base64_pdf)
+    except Exception:
+        raise HTTPException(400, "invalid base64_pdf")
+    if not pdf_bytes:
+        raise HTTPException(400, "empty base64_pdf")
+    _validate_pdf_bytes(pdf_bytes)
+    try:
+        return _build_preview(pdf_bytes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # pypdf / pypdfium2 raise opaque errors on malformed input; return a
+        # clean 400 instead of a 500 stack trace.
+        raise HTTPException(400, f"could not parse PDF: {e}")
+
+
+@app.post("/api/edit", response_model=EditResponse)
+async def api_edit(req: EditRequest) -> EditResponse:
+    """Apply user edits to a generated PDF. We re-walk the AcroForm and write
+    /V on every field whose dotted name appears in the edits dict, then return
+    a fresh preview so the UI can repaint."""
+    try:
+        pdf_bytes = base64.b64decode(req.base64_pdf)
+    except Exception:
+        raise HTTPException(400, "invalid base64_pdf")
+    if not pdf_bytes:
+        raise HTTPException(400, "empty base64_pdf")
+    _validate_pdf_bytes(pdf_bytes)
+
+    from pypdf import PdfReader  # local import keeps top of file tidy
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        edited_bytes = fill_pdf(reader, req.edits)
+        preview = _build_preview(edited_bytes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"could not apply edits: {e}")
+
+    return EditResponse(
+        document=GeneratedDoc(
+            document="edited",
+            filename="edited.pdf",
+            base64=base64.b64encode(edited_bytes).decode("ascii"),
+        ),
+        preview=preview,
+    )
+
+
 @app.get("/api/health")
 async def api_health() -> dict:
     return {"ok": True}
@@ -70,6 +186,13 @@ async def api_health() -> dict:
 
 # Static frontend, mounted last so /api/* routes win.
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"])
+async def favicon() -> Response:
+    # Browsers request this on every page load. We don't ship one yet — return
+    # 204 No Content so the dev log isn't full of 404 noise.
+    return Response(status_code=204)
 
 
 @app.get("/")

@@ -12,6 +12,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "pypdf>=5.1",
     "pycryptodome>=3.21",
+    "pypdfium2>=4.30",
+    "Pillow>=10.4",
 ]
 
 [tool.uv]
