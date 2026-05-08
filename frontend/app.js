@@ -33,6 +33,34 @@ const FRIENDLY = {
 // + delete handler.
 let knownTemplates = [];
 
+// localStorage-backed set of template ids the user has hidden from the
+// picker. IL defaults can't be hard-deleted (they're seeded into the
+// shared DB), but each agent can hide ones they don't use. Custom
+// templates also get hidden when soft-removed via the same mechanism;
+// the "Delete custom template" path also hard-deletes from the server.
+const HIDDEN_TEMPLATES_KEY = "paperwork.hiddenTemplates";
+
+function loadHiddenTemplates() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_TEMPLATES_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenTemplates(set) {
+  try {
+    localStorage.setItem(HIDDEN_TEMPLATES_KEY, JSON.stringify([...set]));
+  } catch {
+    // Quota or private-mode: silently no-op. The user will see their hide
+    // toggle revert on next reload, which is annoying but not broken.
+  }
+}
+
+let hiddenTemplates = loadHiddenTemplates();
+
 const els = {
   notesWrap: document.getElementById("notes-wrap"),
   notes: document.getElementById("notes"),
@@ -58,6 +86,10 @@ const els = {
   tabStrip: document.getElementById("tab-strip"),
   pagesScroll: document.getElementById("pages-scroll"),
   pagesLoading: document.getElementById("pages-loading"),
+  // extract progress UI
+  extractProgress: document.getElementById("extract-progress"),
+  extractProgressTip: document.getElementById("extract-progress-tip"),
+  extractProgressElapsed: document.getElementById("extract-progress-elapsed"),
   // pillar 2: dynamic doc list + upload modal
   docList: document.getElementById("doc-list"),
   docListLoading: document.getElementById("doc-list-loading"),
@@ -250,7 +282,12 @@ function renderDocCards(templates, opts = {}) {
   els.docList.innerHTML = "";
   IMPLEMENTED_DOCS.clear();
 
-  for (const t of templates) {
+  // Filter out templates the user has hidden via localStorage. They can
+  // be restored from the "Show hidden" link below the list.
+  const visible = templates.filter((t) => !hiddenTemplates.has(t.id));
+  updateShowHiddenLink(templates);
+
+  for (const t of visible) {
     IMPLEMENTED_DOCS.add(t.id);
     if (t.title) FRIENDLY[t.id] = t.title;
 
@@ -293,20 +330,24 @@ function renderDocCards(templates, opts = {}) {
     pill.textContent = "awaiting extraction";
     actions.appendChild(pill);
 
-    if (!t.is_default) {
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "btn-icon-sm";
-      del.title = `Delete ${t.title}`;
-      del.setAttribute("aria-label", `Delete ${t.title}`);
-      del.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-      del.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        deleteTemplate(t);
-      });
-      actions.appendChild(del);
-    }
+    // Every card gets a remove button. For custom templates this hard-deletes
+    // (DELETE /api/templates/<id>); for defaults it soft-hides via
+    // localStorage so the seeded shared template stays in the DB and the
+    // user can restore via "Show hidden" below.
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn-icon-sm";
+    const verb = t.is_default ? "Hide" : "Delete";
+    del.title = `${verb} ${t.title}`;
+    del.setAttribute("aria-label", `${verb} ${t.title}`);
+    del.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+    del.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (t.is_default) hideTemplate(t);
+      else deleteTemplate(t);
+    });
+    actions.appendChild(del);
     row.appendChild(actions);
     body.appendChild(row);
 
@@ -354,6 +395,67 @@ function renderDocCards(templates, opts = {}) {
   // Re-run dependent UI now that the cards exist
   computeReadinessAfterExtract();
   updateGenerateBar();
+}
+
+function hideTemplate(template) {
+  // Soft-hide for IL defaults: stays in the DB, just disappears from this
+  // browser's picker until the user clicks "Show hidden" below the list.
+  hiddenTemplates.add(template.id);
+  saveHiddenTemplates(hiddenTemplates);
+  renderDocCards(knownTemplates);
+  toast(`Hid "${template.title}" — show again from below the list`, "info", 3500);
+}
+
+function unhideTemplate(template) {
+  hiddenTemplates.delete(template.id);
+  saveHiddenTemplates(hiddenTemplates);
+  renderDocCards(knownTemplates);
+}
+
+function updateShowHiddenLink(allTemplates) {
+  // Render (or remove) the "Show hidden (N)" link below the doc list.
+  // Only shows when the user has actually hidden something.
+  const existing = document.getElementById("show-hidden-link");
+  if (existing) existing.remove();
+
+  const hiddenList = allTemplates.filter((t) => hiddenTemplates.has(t.id));
+  if (hiddenList.length === 0) return;
+
+  const link = document.createElement("button");
+  link.type = "button";
+  link.id = "show-hidden-link";
+  link.className = "btn-link-sm";
+  link.textContent = `Show ${hiddenList.length} hidden template${hiddenList.length === 1 ? "" : "s"}…`;
+  link.addEventListener("click", () => openHiddenList(hiddenList));
+  // Append after the doc list, before the upload row. The upload row sits
+  // in a sibling .upload-template-row container, so we insertBefore that.
+  const uploadRow = document.querySelector(".upload-template-row");
+  if (uploadRow && uploadRow.parentNode) {
+    uploadRow.parentNode.insertBefore(link, uploadRow);
+  } else {
+    els.docList.parentNode.appendChild(link);
+  }
+}
+
+function openHiddenList(hiddenList) {
+  // Tiny inline popover-ish list. Keeping this dead simple: a confirm
+  // dialog per template, or a one-shot "restore all" prompt.
+  if (hiddenList.length === 1) {
+    const t = hiddenList[0];
+    if (window.confirm(`Restore "${t.title}" to the picker?`)) {
+      unhideTemplate(t);
+    }
+    return;
+  }
+  const restoreAll = window.confirm(
+    `${hiddenList.length} hidden templates:\n\n` +
+    hiddenList.map((t) => `  • ${t.title}`).join("\n") +
+    `\n\nRestore all of them?`
+  );
+  if (!restoreAll) return;
+  for (const t of hiddenList) hiddenTemplates.delete(t.id);
+  saveHiddenTemplates(hiddenTemplates);
+  renderDocCards(knownTemplates);
 }
 
 async function deleteTemplate(template) {
@@ -417,6 +519,14 @@ function computeReadinessAfterExtract() {
   };
 
   document.querySelectorAll(".doc-card").forEach((card) => {
+    // Until the user clicks Extract, the form on the left is empty by
+    // design — flagging "N missing" against an empty form just looks
+    // accusatory. Show neutral "awaiting extraction" instead, then
+    // switch to per-field accounting once we have something to check.
+    if (!extracted) {
+      setReadiness(card, "pending", "awaiting extraction");
+      return;
+    }
     const key = card.dataset.doc;
     const required = checks[key];
     if (required) {
@@ -425,10 +535,10 @@ function computeReadinessAfterExtract() {
       else if (missing.length === required.length) setReadiness(card, "missing", `${missing.length} missing`);
       else setReadiness(card, "partial", `${missing.length} missing`);
     } else {
-      // Custom template — no required-field heuristic, just track whether
-      // extraction has run for the agent to know where to look.
-      if (extracted) setReadiness(card, "ready", "ready");
-      else setReadiness(card, "pending", "awaiting extraction");
+      // Custom template — no per-field required-list. Once extraction
+      // has run, the AI either populated template_extras.<id> or didn't;
+      // either way the user can review on the form and generate.
+      setReadiness(card, "ready", "ready");
     }
   });
 }
@@ -805,6 +915,38 @@ function checkedDocKeys() {
   return keys;
 }
 
+// Tip messages cycled every 4s during extraction. gpt-5 takes 15-45s; the
+// rotating tips signal "still alive, doing work" without us actually knowing
+// the model's progress.
+const EXTRACT_TIPS = [
+  "Reading your notes…",
+  "Identifying the property…",
+  "Looking for dates and money amounts…",
+  "Cross-referencing with attached images…",
+  "Almost there — finalizing structured fields…",
+];
+
+function startExtractProgress() {
+  els.extractProgress.hidden = false;
+  els.extractProgressElapsed.textContent = "0s";
+  els.extractProgressTip.textContent = EXTRACT_TIPS[0];
+  const startedAt = performance.now();
+  let tipIdx = 0;
+  const elapsedTimer = setInterval(() => {
+    const s = Math.floor((performance.now() - startedAt) / 1000);
+    els.extractProgressElapsed.textContent = `${s}s`;
+  }, 200);
+  const tipTimer = setInterval(() => {
+    tipIdx = (tipIdx + 1) % EXTRACT_TIPS.length;
+    els.extractProgressTip.textContent = EXTRACT_TIPS[tipIdx];
+  }, 4000);
+  return () => {
+    clearInterval(elapsedTimer);
+    clearInterval(tipTimer);
+    els.extractProgress.hidden = true;
+  };
+}
+
 async function runExtract() {
   if (!els.notes.value.trim() && attachedImages.length === 0) {
     els.notes.focus();
@@ -812,6 +954,7 @@ async function runExtract() {
     return;
   }
   setLoading(els.extractBtn, true);
+  const stopProgress = startExtractProgress();
   const formData = new FormData();
   formData.append("notes", els.notes.value);
   for (const file of attachedImages) {
@@ -839,6 +982,7 @@ async function runExtract() {
     toast(e.message || "extract failed", "error");
     console.error(e);
   } finally {
+    stopProgress();
     setLoading(els.extractBtn, false);
   }
 }

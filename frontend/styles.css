@@ -683,6 +683,38 @@ input, textarea, select, button { font-family: inherit; }
   align-items: center;
 }
 
+/* Extract progress strip — shown while /api/extract is in flight. gpt-5
+   takes 15-45s; without the elapsed counter and rotating tip the user
+   thinks the app is broken. */
+.extract-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--text-muted);
+  animation: fade-up 0.18s ease;
+}
+.extract-progress[hidden] { display: none; }
+.extract-progress .btn-spinner {
+  border-color: var(--surface-3);
+  border-top-color: var(--accent);
+}
+.extract-progress-tip {
+  flex: 1;
+  min-width: 0;
+}
+.extract-progress-elapsed {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
 /* ---------- doc list states (Pillar 2) ---------- */
 .doc-list-loading {
   display: flex;
@@ -728,6 +760,26 @@ input, textarea, select, button { font-family: inherit; }
   margin-top: 14px;
   display: flex;
   justify-content: flex-start;
+}
+
+/* "Show N hidden templates…" link below the doc list. Plain text button,
+   subtle so it doesn't compete with the upload action. */
+.btn-link-sm {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.btn-link-sm:hover {
+  color: var(--text-muted);
+  text-decoration: underline;
 }
 
 /* ---------- modal (upload) ---------- */
