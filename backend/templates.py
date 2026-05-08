@@ -140,9 +140,13 @@ Rules:
 """
 
 
-# Concise text version of TransactionFields. Keeping this static + small
-# beats serializing the full Pydantic schema (which is verbose and burns
-# tokens). Hand-edit when the canonical schema gains a new field.
+# Concise text version of TransactionFields + the computed-context values
+# interpolate.py injects at fill time. The computed values are critical:
+# without them the AI classifies "Today's Date" / "Lease Sign Date" /
+# "Agent Signed Date" / similar runtime-generated fields as template
+# extras instead of mapping them to the {today} / {today_month_day} /
+# {tenant_1_name} etc. paths that fill_pdf already produces. Every default
+# IL mapping uses these — keep this list in sync with interpolate.build_context.
 CANONICAL_SCHEMA_HINT = """\
 TransactionFields canonical paths (* = nullable):
   transaction_type*: 'lease' | 'sale'
@@ -167,6 +171,32 @@ Agent profile (use as 'agent.<x>'):
   agent.name, agent.license, agent.brokerage, agent.brokerage_address,
   agent.brokerage_mls, agent.brokerage_license, agent.phone, agent.email,
   agent.mls
+
+Computed values (auto-filled at generate time, use as canonical_path):
+  today                       MM/DD/YYYY of fill date — for any field labeled
+                               "Today's Date", "Date", "Sign Date", "Signed
+                               Date", "Lease Date", "Sales Manager Signed Date",
+                               or any blank that the agent fills with the
+                               current date when generating the document.
+  today_month_day             M/D for split-date layouts ("___, 20___")
+  today_year_2digit           YY for split-date layouts (the "20___" half)
+  property.address_full       full one-line "ADDR Unit U, City, ST ZIP"
+  county_suffix               ", Cook County" or "" — appended after addresses
+  tenant_1_name               first tenant in tenant_or_buyer_names list
+  tenant_2_name               second tenant
+  buyer_names_joined          all buyer names joined "A & B" or "A, B, C"
+  seller_names_joined         all seller names joined the same way
+  buyer_city_state_zip        one-line "City, ST ZIP" of buyer's residence
+  closing_date_month_day      M/D split of closing_date
+  closing_date_year_2digit    YY split of closing_date
+  lease_end_month_day         M/D split of lease_end
+  lease_end_year_2digit       YY split of lease_end
+  additional_earnest_month_day, additional_earnest_year_2digit (same pattern)
+
+When you see a date field, prefer a computed value over making it an
+extra_field. "Today's Date" → canonical_path='today'. "Sign Date" → 'today'.
+"Lease End Date" → 'lease_end'. Only use extra_field for dates that aren't
+the fill date and aren't already a canonical schema field.
 """
 
 
