@@ -13,6 +13,7 @@ dotted name has children, (2) reading widget /Rect + /AS off the kids.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -233,40 +234,107 @@ def walk_fields(reader: PdfReader) -> list[FieldInfo]:
     return out
 
 
-def extract_neighbor_text(reader: PdfReader, page_num: int, rect: tuple[float, float, float, float], radius: float = 60.0) -> str:
-    """Pull text near a widget rectangle. Used by the upload flow to give the
-    AI mapper context like 'this field is labeled Tenant Email.'
+_LINE_NUM_RX = re.compile(r"^\s*\d{1,3}\s*$")
+
+
+def _is_line_number_noise(text: str) -> bool:
+    """Multi-Board and similar legal forms have left-margin line numbers
+    ('1', '2', '20', '367', etc.) baked into the page text. They sit just
+    left of the actual content and pollute LEFT context. Filter them out."""
+    return bool(_LINE_NUM_RX.match(text))
+
+
+def extract_neighbor_text(
+    reader: PdfReader,
+    page_num: int,
+    rect: tuple[float, float, float, float],
+    radius: float = 60.0,
+) -> str:
+    """Pull text that's most likely to be the LABEL for an AcroForm field.
+
+    Real-world form labels almost always live in one of three places relative
+    to the input rectangle:
+      1. immediately to the LEFT on the same line ("Tenant Email: ___")
+      2. immediately ABOVE the field, often centered ("Lease End Date\n___")
+      3. for checkboxes, immediately to the RIGHT ("□ Single Family Detached")
+
+    A simple radius box (the v1 approach) drowns out the label with paragraph
+    text on dense legal contracts like Multi-Board: the 1-inch box around
+    field "1" pulled in three full paragraphs while the actual label "Buyer
+    Name(s) [PLEASE PRINT]" got buried.
 
     page_num: 1-based.
     rect: (llx, lly, urx, ury) in PDF user-space points.
-    radius: how far from the rect to look (points). 60pt ≈ 1 inch.
+    radius: legacy parameter, ignored. Kept for caller compatibility.
 
-    Returns a short, whitespace-collapsed string."""
+    Returns up to ~400 chars of "LEFT: <text> | ABOVE: <text> | RIGHT: <text>".
+    """
+    _ = radius  # kept for backwards-compat, no longer used
     if page_num < 1 or page_num > len(reader.pages):
         return ""
     page = reader.pages[page_num - 1]
 
+    # Some PDFs store widget rects with reversed y (lly > ury). Normalize so
+    # all our band math assumes the canonical (llx,lly) = bottom-left,
+    # (urx,ury) = top-right convention.
     llx, lly, urx, ury = rect
-    expanded = (llx - radius, lly - radius, urx + radius, ury + radius)
+    if lly > ury:
+        lly, ury = ury, lly
+    if llx > urx:
+        llx, urx = urx, llx
+    rect_h = max(ury - lly, 8.0)            # treat very thin checkboxes as ~8pt tall
+    line_height = max(rect_h, 12.0) * 1.4   # typical line height with some headroom
 
-    pieces: list[str] = []
+    # Vertical band: from one line above the field to the field's top.
+    # Allow a half-line below the rect for labels that sit on the same baseline
+    # as the input.
+    same_line_top = ury + line_height * 0.4
+    same_line_bot = lly - line_height * 0.2
+    above_top = ury + line_height * 1.6
+    above_bot = ury + line_height * 0.4
+
+    left_pieces: list[tuple[float, str]] = []
+    above_pieces: list[tuple[float, float, str]] = []
+    right_pieces: list[tuple[float, str]] = []
 
     def visitor(text: str, cm, tm, font_dict, font_size) -> None:
-        # tm is the text matrix; positions are tm[4], tm[5].
         try:
             x = float(tm[4])
             y = float(tm[5])
         except (TypeError, IndexError, ValueError):
             return
-        if expanded[0] <= x <= expanded[2] and expanded[1] <= y <= expanded[3]:
-            stripped = text.strip()
-            if stripped:
-                pieces.append(stripped)
+        stripped = text.strip()
+        if not stripped or _is_line_number_noise(stripped):
+            return
+
+        if same_line_bot <= y <= same_line_top:
+            # Left of the rect, within ~3 inches.
+            if x < llx and x > llx - 220:
+                left_pieces.append((x, stripped))
+            # Right of the rect, within ~4 inches. Wider than LEFT because
+            # checkbox labels can be far away on multi-column forms (e.g.
+            # Multi-Board's "Single Family Attached / Detached / Multi-Unit").
+            elif x > urx and x < urx + 280:
+                right_pieces.append((x, stripped))
+        elif above_bot < y <= above_top:
+            # Allow some horizontal slack — labels above can be centered.
+            if (llx - 60) <= x <= (urx + 60):
+                above_pieces.append((y, x, stripped))
 
     try:
         page.extract_text(visitor_text=visitor)
     except Exception:
-        # Some malformed PDFs blow up on extract_text. Better to return "" than crash.
         return ""
 
-    return " ".join(pieces)[:500]
+    left_text = " ".join(t for _, t in sorted(left_pieces, key=lambda p: p[0]))[-180:]
+    above_text = " ".join(t for _, _, t in sorted(above_pieces, key=lambda p: (-p[0], p[1])))[-180:]
+    right_text = " ".join(t for _, t in sorted(right_pieces, key=lambda p: p[0]))[:160]
+
+    parts: list[str] = []
+    if left_text:
+        parts.append(f"LEFT: {left_text}")
+    if above_text:
+        parts.append(f"ABOVE: {above_text}")
+    if right_text:
+        parts.append(f"RIGHT: {right_text}")
+    return " | ".join(parts)[:400]

@@ -950,6 +950,26 @@ ship. Read this alongside the plan during implementation.
     smoke test, /NeedAppearances flag.
   - One walker fix during implementation: a kid that's both `/Subtype=/Widget`
     AND has `/T` is a self-widgeted leaf, not a pure annotation kid.
+- [x] **Pillar 2 chunk 4 shipped** — 2026-05-08. Template upload + AI-proposed
+  mapping. Real-world quality on the lease abstract: **17/17 fields correctly
+  classified** (canonical paths or legitimate template extras). Multi-Board
+  worst case: **22/49 overlap** with hand-authored mappings — agents using
+  the user-review UI in chunk 6 will fix the gaps. **Decision: ship now,
+  iterate based on real-user signal rather than synthetic worst-case
+  optimization.** Multi-Board is the densest legal PDF anyone will upload;
+  most custom templates (pet addendums, pool disclosures, condo riders) are
+  5-30 fields and look more like the lease abstract.
+
+  Known weak spots logged for future iteration:
+    - Adjacent-field label swap on tightly-packed forms (Multi-Board's
+      "27 Business Days" field labels swap between fields 27 and 29).
+    - Statutory "[CHECK ONE] has / has not" patterns aren't detected as
+      a uniform `{statutory_state}`; AI maps each to a separate extra.
+    - Page-14 "FOR INFORMATION ONLY" agent contact block (fields 322-329
+      on Multi-Board) is mistaken for a generic signature block.
+  All three are pattern-recognition problems that get easier when we have
+  real user-corrected mappings to learn from.
+
 - [x] **Pillar 2 spike done** — 2026-05-07. **Verdict: dynamic Pydantic works
   cleanly with the Responses API.** Run via `scripts/spike_dynamic_schema.py`.
   - 0/1/2 active templates all parse correctly. Pet addendum extracted

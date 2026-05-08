@@ -107,8 +107,17 @@ TransactionFields schema used by an Illinois real-estate paperwork tool.
 
 For each PDF field you'll see:
   - the field's name (often a number or a label fragment)
-  - the surrounding text in the PDF (the "neighbor text")
+  - neighbor_text: structured as "LEFT: <words to the left on the same line>
+    | ABOVE: <line just above> | RIGHT: <words to the right on the same line>"
+    (sections are omitted when empty)
   - the field type (/Tx text, /Btn checkbox or radio, /Ch dropdown, /Sig signature)
+
+LEFT text is almost always the label for input fields. RIGHT text is almost
+always the label for checkboxes (e.g. "□ Single Family Detached" → the
+field is the checkbox and "Single Family Detached" is its label). ABOVE
+text is often the column header on multi-column forms. Use these positional
+cues — don't trust the field's own name as a label, since on legal forms
+fields are often just numbers ("1", "2", "112").
 
 You decide ONE of:
   A) The field maps to a canonical path in TransactionFields. Set canonical_path
@@ -236,23 +245,46 @@ def validate_pdf(pdf_bytes: bytes) -> PdfReader:
 
 def collect_field_descriptions(reader: PdfReader) -> list[dict]:
     """For each AcroForm field, build the dict we hand the AI: name, type,
-    neighbor text, and rect coordinates so the AI knows roughly where on the
-    page each field sits."""
+    neighbor text, and rect coordinates.
+
+    Some fields (like Multi-Board's 'Address') have many widget instances
+    that repeat in every page footer. The first widget in walk_fields order
+    is whichever pypdf returned first, which is often a footer copy with
+    useless 'Buyer Initial Seller Initial Address:' neighbor text. Pick
+    the LARGEST widget instead — primary content fields are almost always
+    much wider/taller than footer reprints.
+    """
     out: list[dict] = []
     for fi in walk_fields(reader):
-        # Use the first widget's rect for neighbor-text. Hierarchical fields
-        # with multiple widgets (rare) reuse the first. Good enough for the AI.
-        first = fi.widgets[0] if fi.widgets else None
+        primary = _pick_primary_widget(fi.widgets)
         neighbor = ""
-        if first and first.rect and first.page > 0:
-            neighbor = extract_neighbor_text(reader, first.page, first.rect)
+        if primary and primary.rect and primary.page > 0:
+            neighbor = extract_neighbor_text(reader, primary.page, primary.rect)
         out.append({
             "pdf_field": fi.dotted_name,
             "field_type": fi.field_type,
-            "neighbor_text": neighbor[:200],   # cap to keep token count sane
-            "page": first.page if first else 0,
+            "neighbor_text": neighbor[:300],
+            "page": primary.page if primary else 0,
         })
     return out
+
+
+def _pick_primary_widget(widgets):
+    """Pick the most informative widget for label extraction. Heuristic:
+    largest rect area (primary content fields are usually full-width form
+    blanks; footer reprints are narrower or shorter). Falls back to the
+    first widget if rects are missing."""
+    candidates = [w for w in widgets if w.rect and w.page > 0]
+    if not candidates:
+        return widgets[0] if widgets else None
+
+    def area(w):
+        if not w.rect:
+            return 0.0
+        x0, y0, x1, y1 = w.rect
+        return abs(x1 - x0) * abs(y1 - y0)
+
+    return max(candidates, key=area)
 
 
 async def propose_mapping(field_descriptions: list[dict]) -> ProposedMapping:
