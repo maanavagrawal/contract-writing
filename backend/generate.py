@@ -18,11 +18,12 @@ import base64
 import json
 from pathlib import Path
 
+from pydantic import ValidationError
 from pypdf import PdfReader
 
 from .interpolate import build_context, interpolate
 from .pdf_fill import fill_pdf
-from .schema import AgentProfile, GeneratedDoc, TransactionFields
+from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields
 
 ROOT = Path(__file__).resolve().parent.parent
 MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
@@ -33,11 +34,28 @@ class UnknownDocument(Exception):
     pass
 
 
-def _load_mapping(document_key: str) -> dict:
+class InvalidMapping(Exception):
+    """Raised when a mapping JSON exists but doesn't conform to MappingFile.
+    Surfaces a clear error instead of a Pydantic ValidationError to callers."""
+
+
+def _load_mapping(document_key: str) -> MappingFile:
+    """Load + validate a mapping JSON. Returns a Pydantic MappingFile so callers
+    get typed access to meta + fields without poking at raw dicts."""
     path = MAPPINGS_DIR / f"{document_key}.json"
     if not path.exists():
         raise UnknownDocument(f"no mapping found for '{document_key}'")
-    return json.loads(path.read_text())
+    try:
+        raw = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        raise InvalidMapping(f"mapping '{document_key}' is not valid JSON: {e}")
+    try:
+        return MappingFile.model_validate(raw)
+    except ValidationError as e:
+        # Compress the Pydantic error to one line per missing/wrong field;
+        # full traces are noisy and the field paths are what callers want.
+        issues = "; ".join(f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors())
+        raise InvalidMapping(f"mapping '{document_key}' is invalid: {issues}")
 
 
 def fill_document(
@@ -46,10 +64,8 @@ def fill_document(
     agent: AgentProfile,
 ) -> GeneratedDoc:
     mapping = _load_mapping(document_key)
-    meta = mapping.get("_meta", {})
-    field_templates: dict[str, str] = mapping.get("fields", {})
 
-    source_pdf = TEMPLATES_DIR / meta["source_pdf"]
+    source_pdf = TEMPLATES_DIR / mapping.meta.source_pdf
     if not source_pdf.exists():
         raise FileNotFoundError(f"template PDF missing: {source_pdf}")
 
@@ -58,13 +74,13 @@ def fill_document(
         agent_dict=agent.model_dump(mode="json"),
     )
 
-    rendered = {pdf_field: interpolate(tmpl, ctx) for pdf_field, tmpl in field_templates.items()}
+    rendered = {pdf_field: interpolate(tmpl, ctx) for pdf_field, tmpl in mapping.fields.items()}
 
     reader = PdfReader(str(source_pdf))
     pdf_bytes = fill_pdf(reader, rendered)
 
     return GeneratedDoc(
         document=document_key,
-        filename=meta.get("filled_filename", f"{document_key}_filled.pdf"),
+        filename=mapping.meta.filled_filename or f"{document_key}_filled.pdf",
         base64=base64.b64encode(pdf_bytes).decode("ascii"),
     )

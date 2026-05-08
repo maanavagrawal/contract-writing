@@ -662,10 +662,25 @@ async function runGenerate(triggerBtn) {
       docState.delete(doc.document);
     }
 
-    enterPreviewMode(data.documents);
+    if (data.documents.length > 0) {
+      enterPreviewMode(data.documents);
+    }
 
     if (skipped.length > 0) {
       toast(`Skipped (not implemented yet): ${skipped.join(", ")}`, "info", 4500);
+    }
+
+    // Per-doc failures from /api/generate (e.g., one bad mapping in the batch).
+    // Show each so the user knows which docs didn't make it.
+    const failures = data.failures || [];
+    if (failures.length > 0) {
+      const summary = failures.map((f) => `${FRIENDLY[f.document] || f.document}: ${f.error}`).join("\n");
+      toast(`${failures.length} doc${failures.length === 1 ? "" : "s"} failed:\n${summary}`, "error", 7000);
+    }
+    if (data.documents.length === 0 && failures.length > 0) {
+      // Whole batch failed — make sure we don't leave the user staring at
+      // a stale preview from the previous generate.
+      exitPreviewMode();
     }
   } catch (e) {
     toast(e.message || "generate failed", "error");

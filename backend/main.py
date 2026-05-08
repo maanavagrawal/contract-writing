@@ -21,7 +21,7 @@ load_dotenv()  # picks up OPENAI_API_KEY from .env
 
 from .db import run_migrations
 from .extract import extract_fields
-from .generate import UnknownDocument, fill_document
+from .generate import InvalidMapping, UnknownDocument, fill_document
 from .pdf_fill import fill_pdf
 from .pdf_render import render_pdf_for_edit
 from .schema import (
@@ -29,6 +29,7 @@ from .schema import (
     EditResponse,
     FieldOverlayDTO,
     GeneratedDoc,
+    GeneratedDocFailure,
     GenerateRequest,
     GenerateResponse,
     PageRenderDTO,
@@ -80,15 +81,38 @@ async def api_extract(
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def api_generate(req: GenerateRequest) -> GenerateResponse:
+    """Fill every requested document. One bad mapping or fill error doesn't
+    break the batch — successful docs come back in `documents`, failures in
+    `failures`. Frontend can show partial-success UI cleanly.
+
+    The only request-level 400 is "no documents requested." Everything else
+    becomes a per-doc failure entry."""
     if not req.documents:
         raise HTTPException(400, "no documents requested")
-    out = []
+    out: list[GeneratedDoc] = []
+    failures: list[GeneratedDocFailure] = []
     for doc_key in req.documents:
         try:
             out.append(fill_document(doc_key, req.fields, req.agent))
         except UnknownDocument as e:
-            raise HTTPException(400, str(e))
-    return GenerateResponse(documents=out)
+            failures.append(GeneratedDocFailure(document=doc_key, error=str(e)))
+        except InvalidMapping as e:
+            failures.append(GeneratedDocFailure(document=doc_key, error=str(e)))
+        except FileNotFoundError as e:
+            failures.append(GeneratedDocFailure(
+                document=doc_key, error=f"template PDF missing: {e}",
+            ))
+        except OSError as e:
+            # Disk full, permission denied, etc. — propagate so the caller
+            # knows it's a server-side problem, not bad input.
+            raise HTTPException(503, f"could not write generated PDF: {e}")
+        except Exception as e:
+            # Unexpected fill errors (corrupt PDF, encryption surprise) get
+            # captured per-doc so the rest of the batch still ships.
+            failures.append(GeneratedDocFailure(
+                document=doc_key, error=f"fill failed: {e}",
+            ))
+    return GenerateResponse(documents=out, failures=failures)
 
 
 # Defensive caps to keep a runaway render from hanging the worker. The 4 IL

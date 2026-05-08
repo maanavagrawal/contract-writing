@@ -169,8 +169,41 @@ class GeneratedDoc(BaseModel):
     content_type: str = "application/pdf"
 
 
+class GeneratedDocFailure(BaseModel):
+    """One document that didn't make it through /api/generate. Lets the client
+    show partial-success UI instead of 500ing the whole batch."""
+    document: str
+    error: str
+
+
 class GenerateResponse(BaseModel):
     documents: list[GeneratedDoc]
+    failures: list[GeneratedDocFailure] = Field(default_factory=list)
+
+
+# ---- Mapping JSON validation ----
+
+class MappingMeta(BaseModel):
+    """The _meta block at the top of every backend/mappings/*.json."""
+    title: str
+    source_pdf: str
+    filled_filename: str
+    notes: str | None = None
+
+
+class MappingFile(BaseModel):
+    """Pydantic-validated shape of a mapping JSON. Loaded by generate.py and
+    by the upcoming template-upload flow (which validates user-uploaded
+    mappings before writing them to disk).
+
+    `meta` is read from the JSON's "_meta" key; the `alias` lets us keep the
+    file format unchanged while exposing a Python-friendly attribute name.
+    """
+    meta: MappingMeta = Field(alias="_meta")
+    fields: dict[str, str]
+    extra_fields: list[dict] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
 
 
 # ---- Edit-in-preview ----
