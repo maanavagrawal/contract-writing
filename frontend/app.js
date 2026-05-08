@@ -587,6 +587,19 @@ function exitPreviewMode() {
 }
 
 // ---------- API calls ----------
+
+// Returns the doc keys currently checked in the selection pane. Used by
+// both runExtract (so /api/extract can include those templates' extras in
+// the dynamic schema) and runGenerate (which docs to fill).
+function checkedDocKeys() {
+  const keys = [];
+  document.querySelectorAll(".doc-card").forEach((card) => {
+    const checked = card.querySelector('input[type="checkbox"]').checked;
+    if (checked && card.dataset.doc) keys.push(card.dataset.doc);
+  });
+  return keys;
+}
+
 async function runExtract() {
   if (!els.notes.value.trim() && attachedImages.length === 0) {
     els.notes.focus();
@@ -599,6 +612,10 @@ async function runExtract() {
   for (const file of attachedImages) {
     formData.append("images", file, file.name || "screenshot.png");
   }
+  // Tell the backend which templates are active so any uploaded templates'
+  // extra_fields join the dynamic extraction schema. Backend silently
+  // ignores ids it doesn't recognize, so a stale list doesn't break extract.
+  formData.append("active_template_ids", checkedDocKeys().join(","));
   try {
     const res = await fetch("/api/extract", { method: "POST", body: formData });
     if (!res.ok) {
@@ -624,13 +641,10 @@ async function runExtract() {
 async function runGenerate(triggerBtn) {
   const allSelected = [];
   const skipped = [];
-  document.querySelectorAll(".doc-card").forEach((card) => {
-    const checked = card.querySelector('input[type="checkbox"]').checked;
-    if (!checked) return;
-    const key = card.dataset.doc;
+  for (const key of checkedDocKeys()) {
     if (IMPLEMENTED_DOCS.has(key)) allSelected.push(key);
     else skipped.push(key);
-  });
+  }
 
   if (allSelected.length === 0) {
     toast("None of the selected documents are implemented yet", "error", 5000);

@@ -950,6 +950,22 @@ ship. Read this alongside the plan during implementation.
     smoke test, /NeedAppearances flag.
   - One walker fix during implementation: a kid that's both `/Subtype=/Widget`
     AND has `/T` is a self-widgeted leaf, not a pure annotation kid.
+- [x] **Pillar 2 chunk 5 shipped** — 2026-05-08. Dynamic-schema extraction.
+  `/api/extract` now accepts `active_template_ids` (comma-separated). For
+  each active template with `extra_fields`, the endpoint builds a Pydantic
+  subclass at request time that adds a `template_extras.<template_id>`
+  nested object, then hands that subclass to `responses.parse(text_format=)`.
+  One API call extracts both canonical fields AND every active template's
+  extras.
+
+  Smoke test: synthetic pet-addendum template with 3 extras + notes
+  mentioning "golden retriever named Lucy, $300 pet deposit" → 14s call →
+  template_extras.pet_addendum.pet_name='Lucy', pet_breed='golden retriever',
+  pet_deposit='$300'. Canonical fields still extracted correctly.
+
+  Implementation closely follows the spike that landed in commit 9094d80;
+  no plan adjustments needed.
+
 - [x] **Pillar 2 chunk 4 shipped** — 2026-05-08. Template upload + AI-proposed
   mapping. Real-world quality on the lease abstract: **17/17 fields correctly
   classified** (canonical paths or legitimate template extras). Multi-Board

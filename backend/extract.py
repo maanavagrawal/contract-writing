@@ -4,6 +4,12 @@ Extract structured transaction fields from notes + MLS screenshots.
 Uses OpenAI Responses API with structured outputs (text_format=Pydantic) so
 GPT-5 returns a validated TransactionFields instance — no regex, no JSON
 parsing, no retries on malformed output.
+
+Pillar 2 chunk 5: when active templates contribute extra_fields, this module
+builds a dynamic Pydantic subclass at request time so the same single
+extraction call populates BOTH the canonical schema AND a per-template
+template_extras dict. Validated against the real Responses API in
+scripts/spike_dynamic_schema.py — see commit 9094d80.
 """
 from __future__ import annotations
 
@@ -12,7 +18,9 @@ import base64
 import os
 
 from openai import OpenAI
+from pydantic import BaseModel, Field, create_model
 
+from .models import ExtraField
 from .schema import TransactionFields
 
 MODEL = "gpt-5"
@@ -63,6 +71,80 @@ Sale-specific:
 _client: OpenAI | None = None
 
 
+# ExtraField.type → (python type, friendly description for the prompt).
+# Every field is nullable — extraction is best-effort and the agent reviews.
+_TYPE_MAP: dict[str, tuple[type, str]] = {
+    "text":     (str | None,       "free-form string, as written by the agent"),
+    "money":    (str | None,       "money string preserving agent formatting (e.g. '$3,182' or '2.5%')"),
+    "date":     (str | None,       "ISO YYYY-MM-DD date"),
+    "number":   (int | None,       "integer count"),
+    "bool":     (bool | None,      "true/false"),
+    "list_str": (list[str] | None, "list of strings, one entry per item"),
+}
+
+
+def _build_extras_model_for_template(template_id: str, extras: list[ExtraField]) -> type[BaseModel]:
+    """One Pydantic model per active template, holding its extra_fields. The
+    model name is namespaced by template_id so two uploaded templates with
+    overlapping extra-field names (e.g. both have 'note') don't clobber each
+    other in the dynamic schema."""
+    field_defs: dict[str, tuple] = {}
+    for ef in extras:
+        py_type, type_hint = _TYPE_MAP.get(ef.type, _TYPE_MAP["text"])
+        # Build a Field with the AI-author's description (set during upload)
+        # plus the type hint so the AI knows the expected shape.
+        desc = (ef.description or "").strip()
+        if desc:
+            full_desc = f"{desc} ({type_hint})"
+        else:
+            full_desc = type_hint
+        field_defs[ef.name] = (py_type, Field(None, description=full_desc))
+
+    # Sanitize template_id for class name (alphanumeric + underscore only).
+    safe_id = "".join(c if c.isalnum() else "_" for c in template_id)
+    return create_model(f"Extras_{safe_id}", **field_defs)
+
+
+def build_dynamic_extraction_model(
+    template_extras: dict[str, list[ExtraField]],
+) -> type[BaseModel]:
+    """Return a TransactionFields subclass with a `template_extras` field
+    keyed by template_id. Empty dict = return TransactionFields directly so
+    the JSON schema doesn't carry a useless empty container.
+
+    Mirrors what scripts/spike_dynamic_schema.py validated against the real
+    API. Verified shapes work for 0/1/2 active templates, 22-token cache hit
+    rate, no strict-mode 400s.
+    """
+    if not template_extras:
+        return TransactionFields
+
+    container_fields: dict[str, tuple] = {}
+    for template_id, extras in template_extras.items():
+        if not extras:
+            continue
+        extras_model = _build_extras_model_for_template(template_id, extras)
+        # Sanitize key so it's a valid Python identifier on the container model.
+        safe_key = "".join(c if c.isalnum() else "_" for c in template_id)
+        container_fields[safe_key] = (
+            extras_model | None,
+            Field(None, description=f"Extra fields contributed by template '{template_id}'"),
+        )
+
+    if not container_fields:
+        return TransactionFields
+
+    container_model = create_model("TemplateExtrasContainer", **container_fields)
+    return create_model(
+        "TransactionFieldsExtended",
+        __base__=TransactionFields,
+        template_extras=(
+            container_model | None,
+            Field(None, description="Per-template extra fields. Populate the sub-object only when the agent's notes mention values relevant to that template."),
+        ),
+    )
+
+
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
@@ -81,10 +163,19 @@ def _image_to_data_url(content: bytes, mime: str) -> str:
 async def extract_fields(
     notes: str,
     images: list[tuple[bytes, str]] | None = None,
-) -> TransactionFields:
+    template_extras: dict[str, list[ExtraField]] | None = None,
+) -> BaseModel:
     """
     images: list of (bytes, mime_type) tuples. Empty/None is fine.
-    Returns a validated TransactionFields (fields the model couldn't infer are null).
+    template_extras: maps active template_id → its extra_fields. Passing an
+        empty dict (or omitting) gives the original TransactionFields-only
+        behavior. Passing one or more templates promotes the schema to
+        TransactionFieldsExtended with a template_extras nested object.
+
+    Returns a Pydantic instance of either TransactionFields or
+    TransactionFieldsExtended depending on whether any extras were active.
+    Frontend treats both shapes as identical except for the optional
+    template_extras key.
     """
     user_content: list[dict] = []
     if notes.strip():
@@ -98,6 +189,8 @@ async def extract_fields(
             "image_url": _image_to_data_url(content, mime),
         })
 
+    schema_model = build_dynamic_extraction_model(template_extras or {})
+
     client = _get_client()
     response = await asyncio.to_thread(
         client.responses.parse,
@@ -106,7 +199,7 @@ async def extract_fields(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
-        text_format=TransactionFields,
+        text_format=schema_model,
     )
 
     parsed = response.output_parsed

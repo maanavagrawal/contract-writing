@@ -61,11 +61,24 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="Real Estate Paperwork Automator", lifespan=_lifespan)
 
 
-@app.post("/api/extract", response_model=TransactionFields)
+@app.post("/api/extract")
 async def api_extract(
     notes: str = Form(""),
     images: list[UploadFile] = File(default_factory=list),
-) -> TransactionFields:
+    # Comma-separated list of template ids whose extra_fields should join
+    # the dynamic extraction schema. Pass an empty string (default) to get
+    # the original TransactionFields-only behavior. Form fields can't be
+    # arrays cleanly so we use a comma-separated string and split server-side.
+    active_template_ids: str = Form(""),
+) -> dict:
+    """Extract structured TransactionFields (and optional template_extras
+    from any active uploaded templates) from the agent's notes + MLS images.
+
+    Response shape: TransactionFields fields at the top level, plus an
+    optional `template_extras` key when active_template_ids includes any
+    template that declares extra_fields. Frontend treats template_extras as
+    optional — old clients that don't know about it ignore it cleanly.
+    """
     if not notes.strip() and not images:
         raise HTTPException(400, "must provide notes or at least one image")
 
@@ -78,10 +91,30 @@ async def api_extract(
             continue
         image_payloads.append((content, upload.content_type))
 
+    # Resolve active templates → their extra_fields. Skip ids we can't find
+    # silently (rather than 400ing) so a stale frontend cache doesn't break
+    # extraction.
+    template_extras: dict[str, list] = {}
+    ids = [s.strip() for s in active_template_ids.split(",") if s.strip()]
+    if ids:
+        with get_conn() as conn:
+            for tpl_id in ids:
+                tpl = models.get_template(conn, tpl_id)
+                if tpl and tpl.extra_fields:
+                    template_extras[tpl.id] = tpl.extra_fields
+
     try:
-        return await extract_fields(notes=notes, images=image_payloads)
+        result = await extract_fields(
+            notes=notes,
+            images=image_payloads,
+            template_extras=template_extras,
+        )
     except RuntimeError as e:
         raise HTTPException(500, str(e))
+
+    # The model is either TransactionFields or TransactionFieldsExtended;
+    # both are Pydantic, both round-trip cleanly through model_dump.
+    return result.model_dump(mode="json")
 
 
 @app.post("/api/generate", response_model=GenerateResponse)
