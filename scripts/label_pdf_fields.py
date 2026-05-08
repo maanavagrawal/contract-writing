@@ -9,55 +9,41 @@ Output:
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from pypdf import PdfReader, PdfWriter
-from pypdf.generic import BooleanObject, NameObject
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from pypdf import PdfReader
+
+from backend.pdf_fill import fill_pdf
+from backend.pdf_introspect import walk_fields
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "templates" / "pdf"
 OUT_DIR = Path("/tmp")
 
 
-def force_appearances(writer: PdfWriter) -> None:
-    catalog = writer._root_object
-    if "/AcroForm" not in catalog:
-        return
-    af = catalog["/AcroForm"]
-    if hasattr(af, "get_object"):
-        af = af.get_object()
-    af[NameObject("/NeedAppearances")] = BooleanObject(True)
-
-
 def label(pdf_path: Path) -> tuple[Path, Path]:
     reader = PdfReader(str(pdf_path))
-    writer = PdfWriter(clone_from=reader)
+    fields = walk_fields(reader)
 
-    fields = reader.get_fields() or {}
-    # Number every text field. Stable order = whatever pypdf returns
-    # (which corresponds to the AcroForm /Fields array order).
     text_values: dict[str, str] = {}
     cheat_lines: list[str] = []
     counter = 0
-    for name, field in fields.items():
-        ft = field.get("/FT")
-        if ft != "/Tx":
-            cheat_lines.append(f"     [{ft}] {name}")
+    for fi in fields:
+        if fi.field_type != "/Tx":
+            cheat_lines.append(f"     [{fi.field_type}] {fi.dotted_name}")
             continue
         counter += 1
         label_id = str(counter)
-        text_values[name] = label_id
-        cheat_lines.append(f"{label_id:>4}  {name}")
+        text_values[fi.dotted_name] = label_id
+        cheat_lines.append(f"{label_id:>4}  {fi.dotted_name}")
 
-    for page in writer.pages:
-        if "/Annots" in page:
-            writer.update_page_form_field_values(page, text_values, flatten=True)
-
-    force_appearances(writer)
+    pdf_bytes = fill_pdf(reader, text_values)
 
     out_pdf = OUT_DIR / f"labeled_{pdf_path.name}"
-    with open(out_pdf, "wb") as f:
-        writer.write(f)
+    out_pdf.write_bytes(pdf_bytes)
 
     out_txt = OUT_DIR / f"labeled_{pdf_path.stem}.txt"
     out_txt.write_text("\n".join(cheat_lines) + "\n")

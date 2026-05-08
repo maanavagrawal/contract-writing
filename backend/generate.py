@@ -5,20 +5,23 @@ For each requested document:
   1. Load the mapping JSON (which PDF + which field-name → which template string)
   2. Build a context dict from the request payload
   3. Interpolate every mapping value
-  4. Walk every page of the PDF and apply the values that exist on that page
-  5. Set /NeedAppearances so all viewers re-render field appearances
-  6. Return the filled bytes
+  4. Walk the AcroForm field tree, write /V on every leaf whose dotted name
+     matches a mapping key, and /AS on widget kids for /Btn fields
+  5. Return the filled bytes (base64)
+
+The actual fill logic lives in pdf_fill.py; this module orchestrates mapping
+load + interpolation + delivery.
 """
 from __future__ import annotations
 
-import io
+import base64
 import json
 from pathlib import Path
 
-from pypdf import PdfReader, PdfWriter
-from pypdf.generic import BooleanObject, NameObject
+from pypdf import PdfReader
 
 from .interpolate import build_context, interpolate
+from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, TransactionFields
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,20 +38,6 @@ def _load_mapping(document_key: str) -> dict:
     if not path.exists():
         raise UnknownDocument(f"no mapping found for '{document_key}'")
     return json.loads(path.read_text())
-
-
-def _force_appearances(writer: PdfWriter) -> None:
-    """Tell PDF viewers to regenerate field appearances on open. Without this,
-    Preview / some browsers show empty fields even though the values are set.
-    The /AcroForm reference may be wrapped in an IndirectObject — dereference
-    before mutating."""
-    catalog = writer._root_object
-    if "/AcroForm" not in catalog:
-        return
-    acroform = catalog["/AcroForm"]
-    if hasattr(acroform, "get_object"):
-        acroform = acroform.get_object()
-    acroform[NameObject("/NeedAppearances")] = BooleanObject(True)
 
 
 def fill_document(
@@ -72,20 +61,7 @@ def fill_document(
     rendered = {pdf_field: interpolate(tmpl, ctx) for pdf_field, tmpl in field_templates.items()}
 
     reader = PdfReader(str(source_pdf))
-    writer = PdfWriter(clone_from=reader)
-
-    for page in writer.pages:
-        # update_page_form_field_values silently ignores keys not on this page,
-        # so it's safe to pass the full dict to every page.
-        writer.update_page_form_field_values(page, rendered)
-
-    _force_appearances(writer)
-
-    buf = io.BytesIO()
-    writer.write(buf)
-    pdf_bytes = buf.getvalue()
-
-    import base64
+    pdf_bytes = fill_pdf(reader, rendered)
 
     return GeneratedDoc(
         document=document_key,

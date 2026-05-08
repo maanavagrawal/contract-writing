@@ -142,6 +142,12 @@ def build_context(fields_dict: dict[str, Any], agent_dict: dict[str, Any]) -> di
         prop["address_full"] = ", ".join(parts)
         ctx["property"] = prop
 
+    # County suffix: ", Cook County" if a county is provided, else "". Lets the
+    # Multi-Board Address line render cleanly when county is missing instead of
+    # leaving a literal " County" tail.
+    county = (ctx.get("county") or "").strip()
+    ctx["county_suffix"] = f", {county} County" if county else ""
+
     # Split tenant/buyer name list into 1st and 2nd individuals.
     names = ctx.get("tenant_or_buyer_names") or []
     if isinstance(names, list):

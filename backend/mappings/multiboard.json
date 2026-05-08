@@ -9,7 +9,7 @@
     "1":  "{buyer_names_joined}",
     "2":  "{seller_names_joined}",
 
-    "Address": "{property.address_full}, {county} County",
+    "Address": "{property.address_full}{county_suffix}",
 
     "7":  "{property_type_attached_state}",
     "8":  "{property_type_detached_state}",
