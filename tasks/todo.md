@@ -950,7 +950,24 @@ ship. Read this alongside the plan during implementation.
     smoke test, /NeedAppearances flag.
   - One walker fix during implementation: a kid that's both `/Subtype=/Widget`
     AND has `/T` is a self-widgeted leaf, not a pure annotation kid.
-- [ ] Pillar 2 spike done — _verdict on dynamic Pydantic + Responses API_.
+- [x] **Pillar 2 spike done** — 2026-05-07. **Verdict: dynamic Pydantic works
+  cleanly with the Responses API.** Run via `scripts/spike_dynamic_schema.py`.
+  - 0/1/2 active templates all parse correctly. Pet addendum extracted
+    `pet_name='Lucy'`, `pet_breed='golden retriever'`, `pet_deposit='$300'`
+    from a freeform note. Pool disclosure same.
+  - Schema audit clean across all shapes: 0 strict-mode issues, depth ≤5,
+    `additionalProperties` never `true`, total props 46–53 (well under the
+    100-prop cap), schema size 7.6–8.9KB.
+  - Cache behavior: stable shape gets full cache hits after first call
+    (1,920 / 1,974 input tokens cached on calls 2 and 3). Changing the shape
+    drops cached_tokens to 0, which is fine — different active-template sets
+    are different cache slots, and within one user's session the shape stays
+    stable.
+  - Latency: 15–30s per call, comparable to the existing baseline (46s on
+    the cold call). Acceptable for a single-user tool.
+  - **No plan adjustment needed.** Proceeding with the planned one-call
+    architecture (`extract` takes `active_template_ids`, builds a dynamic
+    `TransactionFieldsExtended` model, parses in one shot).
 - [ ] Pillar 3 spike done — _verdict on DocuSign anchor strings_.
 - [ ] Pillar 2 shipped — _date_, AI mapping eval _% match per template_.
 - [ ] Pillar 3 shipped — _date_, persistence wired up.
