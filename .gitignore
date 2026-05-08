@@ -10,3 +10,7 @@ build/
 .idea/
 .vscode/
 node_modules/
+
+# Pillar 2: sqlite + persisted generated PDFs
+data/
+templates/generated/

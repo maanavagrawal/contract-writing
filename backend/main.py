@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()  # picks up OPENAI_API_KEY from .env
 
+from .db import run_migrations
 from .extract import extract_fields
 from .generate import UnknownDocument, fill_document
 from .pdf_fill import fill_pdf
@@ -39,7 +40,19 @@ from .schema import (
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT / "frontend"
 
-app = FastAPI(title="Real Estate Paperwork Automator")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Run sqlite migrations on startup. Idempotent — safe to run every boot.
+    applied = run_migrations()
+    if applied:
+        print(f"db: applied migrations: {applied}")
+    yield
+
+
+app = FastAPI(title="Real Estate Paperwork Automator", lifespan=_lifespan)
 
 
 @app.post("/api/extract", response_model=TransactionFields)
