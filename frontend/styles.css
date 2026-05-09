@@ -357,6 +357,7 @@ input, textarea, select, button { font-family: inherit; }
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
 }
 .fields-title {
@@ -365,12 +366,39 @@ input, textarea, select, button { font-family: inherit; }
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  margin-right: auto;
 }
 .fields-status {
   font-size: 11px;
   color: var(--text-subtle);
   font-family: var(--font-mono);
 }
+
+/* "Save edits" button on the parsed-fields header. Hidden by default; shown
+   only while the user has uncommitted edits. Ghost-style on purpose so it
+   doesn't compete with the primary Generate/Regenerate CTA in the bottom bar.
+   Clicking it commits buffered edits → snapshot recomputes → bar flips to
+   "Regenerate N documents." */
+.btn-save-fields {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.btn-save-fields:hover {
+  background: rgba(232, 168, 84, 0.08);
+  color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.btn-save-fields:active { transform: translateY(1px); }
 
 /* Collapsible field group. Native <details>/<summary> so it's keyboard-
    accessible and works without JS for the toggle. The summary line shows
@@ -1094,6 +1122,33 @@ input, textarea, select, button { font-family: inherit; }
   opacity: 1;
   background: var(--surface-3);
   color: var(--text-subtle);
+}
+
+/* Three-state Generate button.
+   data-state values come from computeGenerateState() in app.js:
+     - idle       → button is disabled, handled by :disabled above
+     - regenerate → solid amber, the primary "build new docs" affordance
+     - view       → ghost outline, signals "navigate back to existing docs"
+                    without paying the API call. Visually distinct from
+                    regenerate so users trust they aren't re-firing /api/generate.
+   Disabled :first wins so a button mid-load with state=view still looks
+   correct (filled while spinning, then transitions back).                */
+#generate-btn[data-state="view"]:not(:disabled) {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: none;
+}
+#generate-btn[data-state="view"]:not(:disabled):hover {
+  background: rgba(232, 168, 84, 0.08);
+  color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 1px 4px rgba(232, 168, 84, 0.15);
+}
+/* Subtle right-pointing arrow on view to reinforce "open what you already made" */
+#generate-btn[data-state="view"] .btn-label::after {
+  content: " →";
+  opacity: 0.85;
 }
 
 /* ---------- drawer ---------- */

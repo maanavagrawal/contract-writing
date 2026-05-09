@@ -70,6 +70,7 @@ const els = {
   extractBtn: document.getElementById("extract-btn"),
   fields: document.getElementById("fields"),
   fieldsStatus: document.getElementById("fields-status"),
+  saveFieldsBtn: document.getElementById("save-fields-btn"),
   generateBtn: document.getElementById("generate-btn"),
   generateSummary: document.getElementById("generate-summary"),
   profileBtn: document.getElementById("profile-btn"),
@@ -113,6 +114,57 @@ let extracted = false;
 let lastGenerated = []; // last /api/generate response (array of {document, filename, base64, content_type})
 let activeDocKey = null;
 // Per-doc preview state (image renders + pending edits) lives in docState below.
+
+// ---------- generate state machine ----------
+// The Generate button is a 3-state machine derived from data, not toggled by hand:
+//   idle      — nothing to do (no extract yet, no docs picked, or already generated
+//               with no changes since); button is muted/disabled or shows "View"
+//   view      — successful generate exists AND inputs match the snapshot AND there
+//               are no inline preview edits dirty → clicking re-enters preview mode
+//               instead of paying the API call again
+//   regenerate — inputs differ from snapshot (or last gen had failures, or inline
+//               edits dirty) → clicking fires /api/generate
+//
+// `lastGenerateSnapshot` is the canonical hash of {fields, agent, sortedDocKeys}
+// captured at the moment of the last successful (0-failure) generate. If any of
+// those three change, the snapshot won't match and we flip to 'regenerate'.
+// `previewEditsDirty` is set when the user edits a field directly on the rendered
+// PDF overlay; those edits are lost on regenerate, so we warn before allowing it.
+// `fieldsPendingEdits` buffers edits in the parsed-fields panel: while true, the
+// generate bar does NOT recompute on every keystroke. Only an explicit "Save
+// edits" click in that panel publishes the edits to the bar, so the View →
+// Regenerate flip is a deliberate gesture rather than mid-typing flicker.
+let lastGenerateSnapshot = null;
+let previewEditsDirty = false;
+let fieldsPendingEdits = false;
+
+function currentSnapshot() {
+  // Stable JSON of every input that affects /api/generate output. Sorting the
+  // doc-keys array means re-checking the same docs in a different order doesn't
+  // count as a change. Object keys are recursively sorted so nested-object key
+  // order (which depends on DOM iteration order) doesn't perturb the hash.
+  // Note: JSON.stringify's allowlist replacer (an array second arg) only
+  // filters TOP-level keys — it doesn't recurse — so we hand-roll the sort.
+  const fields = collectFields();
+  const agent = readProfileFromInputs();
+  const docs = checkedDocKeys().slice().sort();
+  const stable = (v) => {
+    if (v === null || typeof v !== "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
+    const keys = Object.keys(v).sort();
+    return "{" + keys.map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",") + "}";
+  };
+  return stable({ f: fields, a: agent, d: docs });
+}
+
+function computeGenerateState() {
+  const selected = checkedDocKeys();
+  if (!extracted || selected.length === 0) return "idle";
+  if (lastGenerateSnapshot && lastGenerateSnapshot === currentSnapshot() && !previewEditsDirty) {
+    return "view";
+  }
+  return "regenerate";
+}
 
 // ---------- toasts ----------
 function toast(message, type = "info", ms = 4000) {
@@ -526,12 +578,41 @@ function updateFieldGroupCounts() {
   });
 }
 
+// Which fields make sense for each transaction kind. The "N missing" badge
+// filters against this so a lease deal doesn't get yelled at for not having
+// a purchase_price, and a sale deal doesn't get yelled at for missing rent.
+// "both" means the field applies regardless of transaction type. Anything not
+// listed here defaults to "both" — better to over-flag than to silently skip
+// a field the user really did need.
+const FIELD_APPLIES_TO = {
+  // Lease-only
+  "lease_start": "lease",
+  "lease_end": "lease",
+  "monthly_rent": "lease",
+  // Sale-only
+  "purchase_price": "sale",
+  "earnest_money": "sale",
+  "closing_date": "sale",
+  "seller_names": "sale",
+};
+
 function computeReadinessAfterExtract() {
   const fields = collectFields();
   const profile = readProfileFromInputs();
   const have = (path) => {
     const v = getByPath({ ...fields, agent: profile }, path);
     return Array.isArray(v) ? v.length > 0 : (v != null && String(v).trim() !== "");
+  };
+
+  // The user's transaction type drives field filtering. If they haven't
+  // declared one yet (or the AI couldn't infer it), we keep all fields in
+  // play — an honest "N missing" is better than silently hiding things.
+  const txType = (fields.transaction_type || "").toString().toLowerCase();
+  const txKnown = txType === "lease" || txType === "sale";
+  const fieldApplies = (path) => {
+    if (!txKnown) return true;
+    const applies = FIELD_APPLIES_TO[path] || "both";
+    return applies === "both" || applies === txType;
   };
 
   // Required fields per known IL default. Custom templates are checked
@@ -545,6 +626,17 @@ function computeReadinessAfterExtract() {
     multiboard:     ["property.address", "property.city", "tenant_or_buyer_names", "seller_names", "purchase_price", "earnest_money", "closing_date", "agent.name"],
   };
 
+  // Whole-template applicability. If a doc is fundamentally lease-only and
+  // the user is doing a sale, we want to say "sale only" rather than
+  // "8 missing" — because every required field for that doc is irrelevant
+  // and the count would be a misleading scare number.
+  const TEMPLATE_APPLIES_TO = {
+    lease_invoice:  "lease",
+    lease_abstract: "lease",
+    tenant_rep:     "lease",
+    multiboard:     "sale",
+  };
+
   document.querySelectorAll(".doc-card").forEach((card) => {
     // Until the user clicks Extract, the form on the left is empty by
     // design — flagging "N missing" against an empty form just looks
@@ -555,12 +647,37 @@ function computeReadinessAfterExtract() {
       return;
     }
     const key = card.dataset.doc;
+
+    // Whole-template applicability: if we know the transaction type and the
+    // doc is for the other kind, surface that as the badge rather than a
+    // missing-fields count. Users can still check the box and generate; the
+    // badge just tells them why most of the fields look empty.
+    const tApplies = TEMPLATE_APPLIES_TO[key];
+    if (txKnown && tApplies && tApplies !== txType) {
+      setReadiness(card, "pending", `${tApplies} only`);
+      return;
+    }
+
     const required = checks[key];
     if (required) {
-      const missing = required.filter((p) => !have(p));
-      if (missing.length === 0) setReadiness(card, "ready", "ready");
-      else if (missing.length === required.length) setReadiness(card, "missing", `${missing.length} missing`);
-      else setReadiness(card, "partial", `${missing.length} missing`);
+      // Filter to fields that apply to the current transaction type before
+      // counting. A lease deal shouldn't see "8 missing" on a doc whose
+      // shortfalls are all sale-only fields — those aren't actually missing,
+      // they're not applicable.
+      const applicable = required.filter(fieldApplies);
+      const missing = applicable.filter((p) => !have(p));
+      if (applicable.length === 0) {
+        // Edge case: every required field was filtered out. Treat as ready —
+        // the doc has nothing to fill from the canonical schema and will
+        // rely on its own extras (or the user's manual edits) at generate time.
+        setReadiness(card, "ready", "ready");
+      } else if (missing.length === 0) {
+        setReadiness(card, "ready", "ready");
+      } else if (missing.length === applicable.length) {
+        setReadiness(card, "missing", `${missing.length} missing`);
+      } else {
+        setReadiness(card, "partial", `${missing.length} missing`);
+      }
     } else {
       // Custom template — no per-field required-list. Once extraction
       // has run, the AI either populated template_extras.<id> or didn't;
@@ -582,21 +699,34 @@ function updateGenerateBar() {
     const pill = card.querySelector(".readiness");
     if (pill?.classList.contains("readiness-ready")) ready++;
   });
-  // Bake the count into the button label so the primary action tells you
-  // exactly what it's about to do. Summary line carries the "ready" status
-  // separately for users who care about the pre-flight check.
+
+  const state = computeGenerateState();
   const docWord = selected === 1 ? "document" : "documents";
   const btnLabel = els.generateBtn.querySelector(".btn-label");
+
+  // Set data-state on the button so CSS can swap fill/outline/disabled tone.
+  // The label inside is purely textual; the visual weight comes from the state.
+  els.generateBtn.dataset.state = state;
+  els.generateBtn.classList.toggle("btn-view", state === "view");
+
   if (btnLabel) {
     if (!extracted) {
       btnLabel.textContent = "Extract first to generate";
     } else if (selected === 0) {
       btnLabel.textContent = "Pick a document";
+    } else if (state === "view") {
+      btnLabel.textContent = `View ${selected} ${docWord}`;
+    } else if (lastGenerateSnapshot) {
+      // We've generated before; current inputs differ → this is a re-fill.
+      btnLabel.textContent = `Regenerate ${selected} ${docWord}`;
     } else {
       btnLabel.textContent = `Generate ${selected} ${docWord}`;
     }
   }
-  if (extracted) {
+
+  if (state === "view") {
+    els.generateSummary.innerHTML = `<strong>Documents ready.</strong> View, edit, or change inputs to regenerate.`;
+  } else if (extracted) {
     els.generateSummary.innerHTML = ready === selected
       ? `<strong>All ${selected} ready.</strong> Review fields, then generate.`
       : `<strong>${ready} of ${selected} ready.</strong> Fill remaining fields above.`;
@@ -605,7 +735,10 @@ function updateGenerateBar() {
       ? "Pick at least one document above."
       : `<strong>${selected} ${docWord}</strong> picked. Add notes, then extract.`;
   }
-  els.generateBtn.disabled = !extracted || selected === 0;
+
+  // The button stays clickable in 'view' state — clicking re-enters preview.
+  // Only disabled when there's literally nothing to do.
+  els.generateBtn.disabled = state === "idle";
 }
 
 // ---------- loading state ----------
@@ -677,7 +810,14 @@ function renderFieldOverlay(field, scale, state) {
       state.pendingEdits.set(field.name, newValue);
     }
     state.dirty = state.pendingEdits.size > 0;
+    // Inline PDF edits diverge from the canonical-fields panel, which means a
+    // regenerate would rebuild from the panel and silently overwrite them.
+    // Flag dirty so the bar flips to "Regenerate" and runGenerate prompts a
+    // confirm before firing. Cleared by saveEditsForActiveDoc on success and
+    // by a successful regenerate.
+    previewEditsDirty = true;
     syncSaveBar(state);
+    updateGenerateBar();
   };
 
   if (field.field_type === "/Btn") {
@@ -821,6 +961,13 @@ async function saveEditsForActiveDoc() {
     state.pendingEdits.clear();
     state.dirty = false;
     state.pages = null;
+
+    // Inline edits are now baked into the new PDF bytes — the snapshot
+    // doesn't need to invalidate. Clear the dirty flag so the bar can return
+    // to 'view' state. (If other docs in the batch still have unsaved inline
+    // edits, this gets re-set on their next keystroke.)
+    previewEditsDirty = false;
+    updateGenerateBar();
 
     // Also update lastGenerated so the tab download button gets the new bytes.
     const inList = lastGenerated.find((d) => d.document === activeDocKey);
@@ -1023,6 +1170,11 @@ async function runExtract() {
     extracted = true;
     els.fields.hidden = false;
     populateFields(data);
+    // Extract overwrites the panel from the fresh AI response — anything the
+    // user had buffered is gone, so the pending flag should reset and the
+    // Save button should disappear.
+    fieldsPendingEdits = false;
+    if (els.saveFieldsBtn) els.saveFieldsBtn.hidden = true;
     computeReadinessAfterExtract();
     updateFieldGroupCounts();
     updateGenerateBar();
@@ -1038,6 +1190,28 @@ async function runExtract() {
 }
 
 async function runGenerate(triggerBtn) {
+  // 'view' short-circuit: snapshot still matches the last successful generate
+  // and there are no inline preview edits dirty → just re-enter preview mode
+  // instead of paying the API call again. Only honored on the main bar button;
+  // the in-preview Regenerate button always fires through.
+  const fromMainBar = !triggerBtn || triggerBtn === els.generateBtn;
+  if (fromMainBar && computeGenerateState() === "view" && lastGenerated.length > 0) {
+    enterPreviewMode(lastGenerated);
+    return;
+  }
+
+  // 2A: warn loudly if the user is about to overwrite inline preview edits.
+  // We don't block — the canonical-fields panel is the source of truth — but
+  // we make damn sure the user knows their on-PDF tweaks will disappear.
+  if (previewEditsDirty) {
+    const ok = window.confirm(
+      "You have unsaved edits made directly on the PDF preview.\n\n" +
+      "Regenerating will rebuild from the parsed fields panel and those inline " +
+      "edits will be lost.\n\nContinue?"
+    );
+    if (!ok) return;
+  }
+
   const allSelected = [];
   const skipped = [];
   for (const key of checkedDocKeys()) {
@@ -1052,6 +1226,10 @@ async function runGenerate(triggerBtn) {
 
   const btn = triggerBtn || els.generateBtn;
   setLoading(btn, true);
+  // Capture the snapshot BEFORE the await — if the user edits while the request
+  // is in flight, we want the post-success button state to reflect "you changed
+  // things since you fired this", not "match".
+  const snapshotAtRequest = currentSnapshot();
   try {
     const body = {
       fields: collectFields(),
@@ -1095,6 +1273,20 @@ async function runGenerate(triggerBtn) {
       // a stale preview from the previous generate.
       exitPreviewMode();
     }
+
+    // 1A: only update the snapshot if the generate fully succeeded. If any
+    // doc failed, we leave the previous snapshot in place so the button stays
+    // in 'regenerate' mode — clicking again will retry the failed docs rather
+    // than silently flipping to 'view' on a partial outcome.
+    if (failures.length === 0 && data.documents.length > 0) {
+      lastGenerateSnapshot = snapshotAtRequest;
+      previewEditsDirty = false;
+      // Successful generate consumes any buffered field edits — the snapshot
+      // now matches the live values, so the Save button's job is done.
+      fieldsPendingEdits = false;
+      if (els.saveFieldsBtn) els.saveFieldsBtn.hidden = true;
+    }
+    updateGenerateBar();
   } catch (e) {
     toast(e.message || "generate failed", "error");
     console.error(e);
@@ -1120,10 +1312,32 @@ els.notes.addEventListener("keydown", (e) => {
 });
 
 els.fields.addEventListener("input", () => {
+  // Local UI (per-card readiness pills + per-group fill counts) stays live
+  // because those reflect the in-progress state of the panel and don't claim
+  // anything about the PDFs. The generate bar, however, is gated until the
+  // user clicks "Save edits" — see fieldsPendingEdits.
   computeReadinessAfterExtract();
   updateFieldGroupCounts();
-  updateGenerateBar();
+  if (!fieldsPendingEdits) {
+    fieldsPendingEdits = true;
+    if (els.saveFieldsBtn) els.saveFieldsBtn.hidden = false;
+  }
 });
+
+function commitFieldEdits() {
+  // Publishes buffered field edits to the generate bar. currentSnapshot()
+  // already reads from live inputs, so the only state we change here is the
+  // pending flag — clearing it lets updateGenerateBar() see the current
+  // snapshot vs. lastGenerateSnapshot and flip View → Regenerate accordingly.
+  fieldsPendingEdits = false;
+  if (els.saveFieldsBtn) els.saveFieldsBtn.hidden = true;
+  updateGenerateBar();
+  toast("Edits saved — regenerate to update documents", "success", 2500);
+}
+
+if (els.saveFieldsBtn) {
+  els.saveFieldsBtn.addEventListener("click", commitFieldEdits);
+}
 
 // (doc-card checkboxes are wired per-card in renderDocCards now)
 
@@ -1175,6 +1389,11 @@ els.profileBtn.addEventListener("click", () => {
 els.profileSave.addEventListener("click", () => {
   saveProfile();
   els.drawer.hidden = true;
+  // Profile values feed into /api/generate, so the snapshot must reflect them.
+  // currentSnapshot() reads from the live inputs each call, but the bar's
+  // displayed state is cached — recompute after save so changing the agent
+  // name correctly flips View → Regenerate.
+  updateGenerateBar();
 });
 els.drawer.addEventListener("click", (e) => {
   if (e.target.closest("[data-close]")) els.drawer.hidden = true;
