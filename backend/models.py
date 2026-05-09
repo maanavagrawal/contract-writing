@@ -114,8 +114,19 @@ def list_templates(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> 
     return [Template.from_row(r) for r in rows]
 
 
-def get_template(conn: sqlite3.Connection, tpl_id: str) -> Template | None:
-    row = conn.execute("SELECT * FROM templates WHERE id = ?", (tpl_id,)).fetchone()
+def get_template(
+    conn: sqlite3.Connection,
+    tpl_id: str,
+    user_id: str = DEFAULT_USER_ID,
+) -> Template | None:
+    """Fetch a template by id, scoped to the caller's user_id (or defaults).
+    The OR is_default=1 clause lets every user see the seeded IL templates.
+    Today user_id is always DEFAULT_USER_ID; when auth ships, callers pass the
+    authenticated user and this turns into the per-user privilege boundary."""
+    row = conn.execute(
+        "SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_default = 1)",
+        (tpl_id, user_id),
+    ).fetchone()
     return Template.from_row(row) if row else None
 
 
@@ -139,10 +150,20 @@ def update_template_status(conn: sqlite3.Connection, tpl_id: str, status: Templa
     conn.execute("UPDATE templates SET status = ? WHERE id = ?", (status, tpl_id))
 
 
-def delete_template(conn: sqlite3.Connection, tpl_id: str) -> None:
-    """Refuses to delete a default. Caller should check is_default first; this
-    is a defense-in-depth check."""
-    conn.execute("DELETE FROM templates WHERE id = ? AND is_default = 0", (tpl_id,))
+def delete_template(
+    conn: sqlite3.Connection,
+    tpl_id: str,
+    user_id: str = DEFAULT_USER_ID,
+) -> None:
+    """Delete a template by id, scoped to the caller's user_id. Defaults are
+    protected by is_default=0 — defense-in-depth on top of the API-layer
+    is_default check. user_id scope means a user can only delete their own
+    rows; today everyone is DEFAULT_USER_ID, but the boundary is here for
+    when auth lands."""
+    conn.execute(
+        "DELETE FROM templates WHERE id = ? AND user_id = ? AND is_default = 0",
+        (tpl_id, user_id),
+    )
 
 
 def insert_transaction(conn: sqlite3.Connection, txn: Transaction) -> None:

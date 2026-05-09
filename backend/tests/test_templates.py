@@ -87,7 +87,7 @@ def _proposal_with_two_canonicals_and_one_extra() -> ProposedMapping:
 
 def test_proposal_translates_canonical_paths_to_template_strings():
     proposal = _proposal_with_two_canonicals_and_one_extra()
-    mapping, extras = proposal_to_mapping_file(
+    mapping, extras, unknown_paths = proposal_to_mapping_file(
         proposal, title="Test", source_pdf_filename="abc.pdf",
         filled_filename="test_filled.pdf",
     )
@@ -100,6 +100,8 @@ def test_proposal_translates_canonical_paths_to_template_strings():
     assert len(extras) == 1
     assert extras[0].name == "pet_deposit"
     assert extras[0].type == "money"
+    # All canonical paths in the fixture are valid TransactionFields keys
+    assert unknown_paths == []
 
 
 def test_proposal_unmapped_field_renders_empty_string():
@@ -108,7 +110,7 @@ def test_proposal_unmapped_field_renders_empty_string():
     proposal = ProposedMapping(fields=[
         ProposedField(pdf_field="MYSTERY"),  # no canonical, no extra
     ])
-    mapping, _ = proposal_to_mapping_file(
+    mapping, _extras, _unknown = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert mapping.fields["MYSTERY"] == ""
@@ -124,10 +126,51 @@ def test_proposal_extra_field_type_defaults_to_text():
             extra_field_description="Something weird the agent writes",
         ),
     ])
-    _, extras = proposal_to_mapping_file(
+    _, extras, _unknown = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert extras[0].type == "text"
+
+
+def test_proposal_unknown_canonical_path_is_demoted_to_unmapped():
+    """If GPT hallucinates a canonical_path that isn't in TransactionFields/
+    AgentProfile/computed values, we leave the field unmapped (empty string)
+    AND surface it in unknown_paths so the upload pipeline can flag the
+    template for human review instead of letting the user discover blank
+    fields at fill time."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="GOOD", canonical_path="property.address"),
+        ProposedField(pdf_field="BAD", canonical_path="borrower.full_name"),
+        ProposedField(pdf_field="ALSO_BAD", canonical_path="totally_made_up"),
+    ])
+    mapping, extras, unknown_paths = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    assert mapping.fields["GOOD"] == "{property.address}"
+    assert mapping.fields["BAD"] == ""
+    assert mapping.fields["ALSO_BAD"] == ""
+    assert len(unknown_paths) == 2
+    assert any("borrower.full_name" in u for u in unknown_paths)
+    assert any("totally_made_up" in u for u in unknown_paths)
+
+
+def test_proposal_computed_value_paths_are_allowed():
+    """Computed values like {today}, {county_suffix}, {tenant_1_name} are
+    legitimate canonical_paths even though they aren't TransactionFields keys.
+    The allowlist must include them or the AI mapper would have its valid
+    'today → today' proposals wrongly demoted."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="DATE_OF_SIGNING", canonical_path="today"),
+        ProposedField(pdf_field="ADDR_LINE", canonical_path="property.address_full"),
+        ProposedField(pdf_field="COUNTY_TAIL", canonical_path="county_suffix"),
+        ProposedField(pdf_field="TENANT_1", canonical_path="tenant_1_name"),
+    ])
+    mapping, _extras, unknown_paths = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    assert mapping.fields["DATE_OF_SIGNING"] == "{today}"
+    assert mapping.fields["COUNTY_TAIL"] == "{county_suffix}"
+    assert unknown_paths == []
 
 
 # ---- API endpoint tests (DB + endpoint, AI mocked) ----

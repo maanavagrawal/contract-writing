@@ -41,8 +41,21 @@ class InvalidMapping(Exception):
 
 def _load_mapping(document_key: str) -> MappingFile:
     """Load + validate a mapping JSON. Returns a Pydantic MappingFile so callers
-    get typed access to meta + fields without poking at raw dicts."""
+    get typed access to meta + fields without poking at raw dicts.
+
+    Path-traversal guard: document_key comes from request input. Reject any
+    key containing path separators or leading dots so a payload like
+    "../../etc/passwd" can't reach files outside MAPPINGS_DIR.
+    """
+    if "/" in document_key or "\\" in document_key or document_key.startswith("."):
+        raise UnknownDocument(f"invalid document key: {document_key!r}")
     path = MAPPINGS_DIR / f"{document_key}.json"
+    # Defense-in-depth: even with the char-class check above, resolve and
+    # require the target stay inside MAPPINGS_DIR. Cheap insurance.
+    try:
+        path.resolve().relative_to(MAPPINGS_DIR.resolve())
+    except ValueError:
+        raise UnknownDocument(f"invalid document key: {document_key!r}")
     if not path.exists():
         raise UnknownDocument(f"no mapping found for '{document_key}'")
     try:

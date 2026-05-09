@@ -141,9 +141,14 @@ async def api_generate(req: GenerateRequest) -> GenerateResponse:
                 document=doc_key, error=f"template PDF missing: {e}",
             ))
         except OSError as e:
-            # Disk full, permission denied, etc. — propagate so the caller
-            # knows it's a server-side problem, not bad input.
-            raise HTTPException(503, f"could not write generated PDF: {e}")
+            # Disk full, permission denied, etc. Per-doc failure rather than
+            # 503-bombing the whole batch — sibling docs may have already
+            # filled successfully and the user shouldn't lose them just
+            # because doc 4 of 5 hit a bad temp dir. Caller still sees the
+            # OS-level error in the failures list.
+            failures.append(GeneratedDocFailure(
+                document=doc_key, error=f"server error filling PDF: {e}",
+            ))
         except Exception as e:
             # Unexpected fill errors (corrupt PDF, encryption surprise) get
             # captured per-doc so the rest of the batch still ships.
@@ -320,38 +325,60 @@ async def api_upload_template(
 
     template_id = models.new_id()
     pdf_path = templates_mod.save_uploaded_pdf(pdf_bytes, template_id)
+    mapping_path: Path | None = None
 
-    # AI mapping proposal. This is the slow part (~30-60s on Multi-Board).
+    # Files exist on disk before the DB row does. Any failure between here
+    # and the successful insert needs to clean up, otherwise we leak orphan
+    # files no one can find or delete. Track everything we wrote and unlink
+    # on any non-success exit.
     try:
-        proposal = await templates_mod.propose_mapping(field_descs)
-    except templates_mod.AIMappingError as e:
-        # Clean up the saved PDF — no point leaving an orphaned file when
-        # the mapping never got created.
+        # AI mapping proposal. The slow part (~30-60s on Multi-Board).
         try:
-            pdf_path.unlink()
-        except OSError:
-            pass
-        raise HTTPException(502, f"AI mapping failed: {e}")
+            proposal = await templates_mod.propose_mapping(field_descs)
+        except templates_mod.AIMappingError as e:
+            raise HTTPException(502, f"AI mapping failed: {e}")
 
-    # Translate proposal into MappingFile + ExtraField list.
-    mapping_file, extras = templates_mod.proposal_to_mapping_file(
-        proposal,
-        title=title,
-        source_pdf_filename=f"{template_id}.pdf",
-        filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
-    )
-    mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
+        # Translate proposal into MappingFile + ExtraField list. unknown_paths
+        # surfaces hallucinated canonical_paths so we can flag the template for
+        # human review instead of letting the user discover blank fields later.
+        mapping_file, extras, unknown_paths = templates_mod.proposal_to_mapping_file(
+            proposal,
+            title=title,
+            source_pdf_filename=f"{template_id}.pdf",
+            filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
+        )
+        mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
 
-    template_row = templates_mod.build_template_row(
-        template_id=template_id,
-        title=title,
-        source_pdf_path=pdf_path,
-        mapping_path=mapping_path,
-        extras=extras,
-        user_id=models.DEFAULT_USER_ID,
-    )
-    with get_conn() as conn:
-        models.insert_template(conn, template_row)
+        # If the AI proposed paths we don't recognize, demote to needs_attention.
+        # The mapping still saves with those fields unmapped so the human can
+        # fix them in the review UI rather than getting silently-blank PDFs.
+        upload_status: models.TemplateStatus = (
+            "needs_attention" if unknown_paths else "pending_review"
+        )
+
+        template_row = templates_mod.build_template_row(
+            template_id=template_id,
+            title=title,
+            source_pdf_path=pdf_path,
+            mapping_path=mapping_path,
+            extras=extras,
+            user_id=models.DEFAULT_USER_ID,
+            status=upload_status,
+        )
+        with get_conn() as conn:
+            models.insert_template(conn, template_row)
+    except BaseException:
+        # Any failure path (HTTPException, OSError, sqlite IntegrityError,
+        # SystemExit on worker kill — anything except a clean return) must
+        # unlink whatever files we already wrote.
+        for orphan in (pdf_path, mapping_path):
+            if orphan is None:
+                continue
+            try:
+                Path(orphan).unlink()
+            except OSError:
+                pass
+        raise
 
     return TemplateUploadResponse(
         id=template_id,
@@ -383,13 +410,31 @@ async def api_delete_template(template_id: str):
         models.delete_template(conn, template_id)
         # Best-effort filesystem cleanup. Absolute paths (test fixtures) get
         # used as-is; relative paths resolve against repo root.
+        # Defense-in-depth: only unlink under the directories we own
+        # (TEMPLATES_PDF_DIR, MAPPINGS_DIR — which monkeypatch overrides in
+        # tests). Without this, a stale or malicious DB row could direct
+        # unlink() at arbitrary filesystem paths.
         repo_root = Path(__file__).resolve().parent.parent
+        allowed_roots = [
+            templates_mod.TEMPLATES_PDF_DIR.resolve(),
+            templates_mod.MAPPINGS_DIR.resolve(),
+        ]
         for path_str in (existing.source_pdf_path, existing.mapping_path):
             p = Path(path_str)
             if not p.is_absolute():
                 p = repo_root / p
             try:
-                p.unlink()
+                resolved = p.resolve()
+            except OSError:
+                continue
+            if not any(
+                resolved == root or root in resolved.parents
+                for root in allowed_roots
+            ):
+                # Path escaped our owned roots — refuse to unlink.
+                continue
+            try:
+                resolved.unlink()
             except OSError:
                 pass
     return Response(status_code=204)
@@ -409,10 +454,21 @@ async def root() -> FileResponse:
 
 @app.get("/{path:path}")
 async def static_passthrough(path: str) -> FileResponse:
-    """Serve any frontend file by name (styles.css, app.js, etc.)."""
+    """Serve any frontend file by name (styles.css, app.js, etc.).
+
+    Path-traversal guard: resolve the candidate target and require it sit under
+    FRONTEND_DIR. Without this, a request like /../backend/main.py or any URL
+    whose decoded segments escape the frontend directory would serve arbitrary
+    repo files (including .env, sqlite, source). Resolve+is_relative_to is the
+    standard FastAPI/Path defense.
+    """
     if path.startswith("api/"):
         raise HTTPException(404)
-    target = FRONTEND_DIR / path
+    target = (FRONTEND_DIR / path).resolve()
+    try:
+        target.relative_to(FRONTEND_DIR.resolve())
+    except ValueError:
+        raise HTTPException(404)
     if not target.exists() or not target.is_file():
         raise HTTPException(404)
     return FileResponse(str(target))

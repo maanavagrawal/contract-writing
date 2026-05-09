@@ -322,14 +322,80 @@ async def propose_mapping(field_descriptions: list[dict]) -> ProposedMapping:
     return parsed
 
 
+# Allowlist of canonical paths the AI is allowed to propose. Derived from
+# TransactionFields + AgentProfile + the computed-value keys interpolate.py
+# emits at fill time. Anything outside this set is a hallucination — at fill
+# time it would silently render empty (the interpolate regex matches but
+# _resolve returns None), giving users a blank PDF with no signal as to why.
+# Surfacing it at upload-review time costs nothing and saves the surprise.
+def _build_canonical_path_allowlist() -> set[str]:
+    from .schema import AgentProfile, Property, TransactionFields  # local import to avoid cycle
+
+    allowed: set[str] = set()
+
+    # TransactionFields scalar + nested keys
+    for name, field in TransactionFields.model_fields.items():
+        if name == "property":
+            for prop_name in Property.model_fields:
+                allowed.add(f"property.{prop_name}")
+        else:
+            allowed.add(name)
+
+    # AgentProfile nested under "agent."
+    for name in AgentProfile.model_fields:
+        allowed.add(f"agent.{name}")
+
+    # Computed values emitted by interpolate.build_context. These have to be
+    # kept in sync with that function — see CANONICAL_SCHEMA_HINT for the same
+    # list documented for the AI.
+    allowed.update({
+        "today",
+        "today_month_day",
+        "today_year_2digit",
+        "property.address_full",
+        "county_suffix",
+        "tenant_1_name",
+        "tenant_2_name",
+        "buyer_names_joined",
+        "seller_names_joined",
+        "buyer_city_state_zip",
+        "closing_date_month_day",
+        "closing_date_year_2digit",
+        "lease_end_month_day",
+        "lease_end_year_2digit",
+        "additional_earnest_month_day",
+        "additional_earnest_year_2digit",
+        # AcroForm checkbox/radio state names from interpolate
+        "property_type_attached_state",
+        "property_type_detached_state",
+        "property_type_multi_unit_state",
+        "escrowee_state",
+        "seller_pays_brokerage_state",
+        "commission_percent_value",
+        "commission_dollar_value",
+        "loan_rate_type_state",
+        "loan_type_state",
+        "statutory_state",
+    })
+    return allowed
+
+
+_CANONICAL_PATH_ALLOWLIST = _build_canonical_path_allowlist()
+
+
 def proposal_to_mapping_file(
     proposal: ProposedMapping,
     title: str,
     source_pdf_filename: str,
     filled_filename: str,
-) -> tuple[MappingFile, list[ExtraField]]:
+) -> tuple[MappingFile, list[ExtraField], list[str]]:
     """Convert the AI's ProposedMapping into the on-disk MappingFile shape +
     a separate ExtraField list for the templates table.
+
+    Returns (mapping, extras, unknown_paths). `unknown_paths` carries any
+    canonical_path the AI proposed that isn't in TransactionFields/AgentProfile/
+    computed values — those get demoted to unmapped-empty and the caller
+    can flag the template for human review.
 
     For canonical paths the mapping value is '{<path>}' (template-engine
     syntax that interpolate.py already handles). For extras the value is
@@ -340,10 +406,19 @@ def proposal_to_mapping_file(
     """
     fields: dict[str, str] = {}
     extras: list[ExtraField] = []
+    unknown_paths: list[str] = []
 
     for f in proposal.fields:
         if f.canonical_path:
-            fields[f.pdf_field] = "{" + f.canonical_path + "}"
+            if f.canonical_path in _CANONICAL_PATH_ALLOWLIST:
+                fields[f.pdf_field] = "{" + f.canonical_path + "}"
+            else:
+                # AI hallucinated a path. Don't write the broken reference;
+                # leave the field unmapped so the human reviewer sees "this
+                # field has no mapping" rather than "this field renders blank
+                # and I don't know why."
+                fields[f.pdf_field] = ""
+                unknown_paths.append(f"{f.pdf_field} → {f.canonical_path}")
         elif f.extra_field_name:
             # Reference into template_extras. Even if the dynamic-schema
             # extractor isn't live yet, the user can edit the value in the
@@ -368,7 +443,7 @@ def proposal_to_mapping_file(
         ),
         fields=fields,
     )
-    return mapping, extras
+    return mapping, extras, unknown_paths
 
 
 def write_mapping_file(mapping: MappingFile, template_id: str) -> Path:
