@@ -1,25 +1,30 @@
 """
-FastAPI app — two endpoints + the static frontend.
+FastAPI app — auth + extract/generate/preview/edit + the static frontend.
 
 Run with:
     .venv/bin/uvicorn backend.main:app --reload --port 8000
 
 Then open http://localhost:8000.
+
+Multi-tenant: every /api/* route requires a session cookie. user_id is
+threaded through every read and write so a request from User A can never
+touch User B's templates or transactions.
 """
 from __future__ import annotations
 
 import base64
 import io
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 
-load_dotenv()  # picks up OPENAI_API_KEY from .env
+load_dotenv()  # picks up env vars from .env in dev; Railway injects via the dashboard
 
-from . import models, templates as templates_mod
+from . import auth, models, templates as templates_mod
+from .auth import User, current_user
 from .db import get_conn, run_migrations
 from .extract import extract_fields
 from .generate import InvalidMapping, UnknownDocument, fill_document
@@ -40,44 +45,166 @@ from .schema import (
     TemplateListItem,
     TemplateListResponse,
     TemplateUploadResponse,
-    TransactionFields,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT / "frontend"
 
-from contextlib import asynccontextmanager
-
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Run sqlite migrations on startup. Idempotent — safe to run every boot.
+    # Run Postgres migrations on startup. Idempotent — safe to run every boot.
     applied = run_migrations()
     if applied:
         print(f"db: applied migrations: {applied}")
     yield
 
 
-app = FastAPI(title="Real Estate Paperwork Automator", lifespan=_lifespan)
+app = FastAPI(title="memoir", lifespan=_lifespan)
 
+
+# ---------------------- AUTH ROUTES ----------------------
+
+@app.post("/api/auth/login")
+async def api_auth_login(
+    request: Request,
+    payload: dict = Body(...),
+):
+    """Send a magic link to the email in the body. Always returns 200 to
+    prevent email enumeration — the client message is generic regardless of
+    whether the email is known."""
+    email = (payload.get("email") or "").strip()
+    if not email:
+        raise HTTPException(400, "email is required")
+
+    base_url = auth._resolve_base_url(request)
+    try:
+        with get_conn() as conn:
+            auth.send_magic_link(conn, email, base_url)
+    except auth.RateLimitError:
+        raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Don't leak internals; log and return generic.
+        print(f"auth.login: unexpected error: {e}")
+        raise HTTPException(503, "could not send login email")
+
+    return {"ok": True}
+
+
+@app.get("/auth/redeem", response_class=HTMLResponse)
+async def auth_redeem_page(token: str):
+    """Two-step redemption: GET shows a page with a button that POSTs the
+    redemption. Defeats email-prefetchers (Outlook Safe Links, Gmail's
+    image proxy, Slack unfurls) that would otherwise burn the single-use
+    token before the user clicks it.
+
+    The token is embedded as a hidden input. The form POSTs to
+    /api/auth/redeem which returns the session cookie + redirect.
+    """
+    safe_token = token.replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in to memoir</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           background: #0d1117; color: #f0f6fc; display: grid; place-items: center;
+           min-height: 100vh; margin: 0; }}
+    .card {{ background: #161b22; padding: 32px 40px; border-radius: 12px;
+           border: 1px solid #30363d; max-width: 380px; text-align: center; }}
+    h1 {{ font-size: 18px; font-weight: 600; margin: 0 0 8px; }}
+    p {{ color: #8b949e; font-size: 14px; line-height: 1.5; margin: 0 0 20px; }}
+    button {{ background: #1f6feb; color: white; border: 0; padding: 10px 20px;
+              font-size: 14px; font-weight: 500; border-radius: 6px;
+              cursor: pointer; width: 100%; }}
+    button:hover {{ background: #388bfd; }}
+    button:disabled {{ background: #30363d; cursor: wait; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Log in to memoir</h1>
+    <p>Click the button below to complete your login.</p>
+    <form id="f" method="POST" action="/api/auth/redeem">
+      <input type="hidden" name="token" value="{safe_token}">
+      <button type="submit" id="btn">Log in</button>
+    </form>
+  </div>
+  <script>
+    document.getElementById('f').addEventListener('submit', function(e) {{
+      e.preventDefault();
+      var btn = document.getElementById('btn');
+      btn.disabled = true; btn.textContent = 'Logging in…';
+      var fd = new FormData(e.target);
+      fetch('/api/auth/redeem', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
+        body: new URLSearchParams(fd),
+      }}).then(function(r) {{
+        if (r.ok) {{ window.location.href = '/'; }}
+        else {{ btn.disabled = false; btn.textContent = 'Try again';
+                r.text().then(function(t) {{ alert(t || 'Login failed'); }}); }}
+      }}).catch(function() {{
+        btn.disabled = false; btn.textContent = 'Try again';
+        alert('Network error');
+      }});
+    }});
+  </script>
+</body>
+</html>"""
+
+
+@app.post("/api/auth/redeem")
+async def api_auth_redeem(
+    request: Request,
+    response: Response,
+    token: str = Form(...),
+):
+    """Burn the magic-link token, issue a session, and set the cookie."""
+    with get_conn() as conn:
+        user = auth.redeem_token(conn, token)
+        plaintext = auth.issue_session(conn, user)
+    auth.set_session_cookie(response, plaintext, secure=auth._is_secure_request(request))
+    return {"ok": True, "email": user.email}
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout(request: Request, response: Response):
+    """Delete the session row + clear the cookie. Idempotent — calling logout
+    when not logged in is a no-op."""
+    cookie = request.cookies.get(auth.SESSION_COOKIE)
+    if cookie:
+        with get_conn() as conn:
+            auth.revoke_session(conn, cookie)
+    auth.clear_session_cookie(response)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+async def api_auth_me(user: User = Depends(current_user)):
+    """Cheap auth probe; frontend hits this on boot to decide login-vs-app."""
+    return {"id": user.id, "email": user.email}
+
+
+# ---------------------- APP ROUTES ----------------------
 
 @app.post("/api/extract")
 async def api_extract(
     notes: str = Form(""),
     images: list[UploadFile] = File(default_factory=list),
-    # Comma-separated list of template ids whose extra_fields should join
-    # the dynamic extraction schema. Pass an empty string (default) to get
-    # the original TransactionFields-only behavior. Form fields can't be
-    # arrays cleanly so we use a comma-separated string and split server-side.
     active_template_ids: str = Form(""),
+    user: User = Depends(current_user),
 ) -> dict:
     """Extract structured TransactionFields (and optional template_extras
     from any active uploaded templates) from the agent's notes + MLS images.
 
-    Response shape: TransactionFields fields at the top level, plus an
-    optional `template_extras` key when active_template_ids includes any
-    template that declares extra_fields. Frontend treats template_extras as
-    optional — old clients that don't know about it ignore it cleanly.
+    Active template_ids are scoped to the caller's own templates only —
+    passing another user's template id silently drops it (template_extras
+    becomes empty for that key).
     """
     if not notes.strip() and not images:
         raise HTTPException(400, "must provide notes or at least one image")
@@ -91,15 +218,12 @@ async def api_extract(
             continue
         image_payloads.append((content, upload.content_type))
 
-    # Resolve active templates → their extra_fields. Skip ids we can't find
-    # silently (rather than 400ing) so a stale frontend cache doesn't break
-    # extraction.
     template_extras: dict[str, list] = {}
     ids = [s.strip() for s in active_template_ids.split(",") if s.strip()]
     if ids:
         with get_conn() as conn:
             for tpl_id in ids:
-                tpl = models.get_template(conn, tpl_id)
+                tpl = models.get_template(conn, tpl_id, user_id=user.id)
                 if tpl and tpl.extra_fields:
                     template_extras[tpl.id] = tpl.extra_fields
 
@@ -112,24 +236,33 @@ async def api_extract(
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 
-    # The model is either TransactionFields or TransactionFieldsExtended;
-    # both are Pydantic, both round-trip cleanly through model_dump.
     return result.model_dump(mode="json")
 
 
 @app.post("/api/generate", response_model=GenerateResponse)
-async def api_generate(req: GenerateRequest) -> GenerateResponse:
-    """Fill every requested document. One bad mapping or fill error doesn't
-    break the batch — successful docs come back in `documents`, failures in
-    `failures`. Frontend can show partial-success UI cleanly.
-
-    The only request-level 400 is "no documents requested." Everything else
-    becomes a per-doc failure entry."""
+async def api_generate(
+    req: GenerateRequest,
+    user: User = Depends(current_user),
+) -> GenerateResponse:
+    """Fill every requested document. user_id-scoped: document keys must
+    correspond to templates owned by the caller. Unknown / unowned keys
+    become per-doc failures so partial-success UX still works."""
     if not req.documents:
         raise HTTPException(400, "no documents requested")
+
+    with get_conn() as conn:
+        owned_ids = {
+            t.id for t in models.list_templates(conn, user_id=user.id)
+        }
+
     out: list[GeneratedDoc] = []
     failures: list[GeneratedDocFailure] = []
     for doc_key in req.documents:
+        if doc_key not in owned_ids:
+            failures.append(GeneratedDocFailure(
+                document=doc_key, error=f"template '{doc_key}' not found",
+            ))
+            continue
         try:
             out.append(fill_document(doc_key, req.fields, req.agent))
         except UnknownDocument as e:
@@ -141,34 +274,22 @@ async def api_generate(req: GenerateRequest) -> GenerateResponse:
                 document=doc_key, error=f"template PDF missing: {e}",
             ))
         except OSError as e:
-            # Disk full, permission denied, etc. Per-doc failure rather than
-            # 503-bombing the whole batch — sibling docs may have already
-            # filled successfully and the user shouldn't lose them just
-            # because doc 4 of 5 hit a bad temp dir. Caller still sees the
-            # OS-level error in the failures list.
-            failures.append(GeneratedDocFailure(
-                document=doc_key, error=f"server error filling PDF: {e}",
-            ))
+            raise HTTPException(503, f"could not write generated PDF: {e}")
         except Exception as e:
-            # Unexpected fill errors (corrupt PDF, encryption surprise) get
-            # captured per-doc so the rest of the batch still ships.
             failures.append(GeneratedDocFailure(
                 document=doc_key, error=f"fill failed: {e}",
             ))
     return GenerateResponse(documents=out, failures=failures)
 
 
-# Defensive caps to keep a runaway render from hanging the worker. The 4 IL
-# templates max out at ~1MB and 15 pages; these limits are 25× headroom.
-_MAX_PDF_BYTES = 25 * 1024 * 1024     # 25MB decoded
+# Defensive caps to keep a runaway render from hanging the worker.
+_MAX_PDF_BYTES = 25 * 1024 * 1024
 _MAX_PDF_PAGES = 50
 
 
 def _validate_pdf_bytes(pdf_bytes: bytes) -> None:
-    """Raise HTTPException(413) if the input would blow up the renderer."""
     if len(pdf_bytes) > _MAX_PDF_BYTES:
         raise HTTPException(413, f"PDF exceeds {_MAX_PDF_BYTES // (1024 * 1024)}MB cap")
-    # Cheap page count: parse just enough metadata to know.
     from pypdf import PdfReader
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -179,36 +300,25 @@ def _validate_pdf_bytes(pdf_bytes: bytes) -> None:
 
 
 def _build_preview(pdf_bytes: bytes) -> PreviewResponse:
-    """Run the PDF through pypdfium2 + pdf_introspect and shape the result for
-    the frontend overlay. Single source of truth so /api/preview and the
-    preview half of /api/edit stay aligned."""
     pages, fields = render_pdf_for_edit(pdf_bytes)
     return PreviewResponse(
         pages=[
-            PageRenderDTO(
-                page=p.page,
-                width_px=p.width_px,
-                height_px=p.height_px,
-                image_b64=p.image_b64,
-            )
+            PageRenderDTO(page=p.page, width_px=p.width_px, height_px=p.height_px, image_b64=p.image_b64)
             for p in pages
         ],
         fields=[
-            FieldOverlayDTO(
-                name=f.name,
-                field_type=f.field_type,
-                page=f.page,
-                rect_px=f.rect_px,
-                value=f.value,
-                states=f.states,
-            )
+            FieldOverlayDTO(name=f.name, field_type=f.field_type, page=f.page,
+                            rect_px=f.rect_px, value=f.value, states=f.states)
             for f in fields
         ],
     )
 
 
 @app.post("/api/preview", response_model=PreviewResponse)
-async def api_preview(req: PreviewRequest) -> PreviewResponse:
+async def api_preview(
+    req: PreviewRequest,
+    user: User = Depends(current_user),
+) -> PreviewResponse:
     try:
         pdf_bytes = base64.b64decode(req.base64_pdf)
     except Exception:
@@ -221,16 +331,14 @@ async def api_preview(req: PreviewRequest) -> PreviewResponse:
     except HTTPException:
         raise
     except Exception as e:
-        # pypdf / pypdfium2 raise opaque errors on malformed input; return a
-        # clean 400 instead of a 500 stack trace.
         raise HTTPException(400, f"could not parse PDF: {e}")
 
 
 @app.post("/api/edit", response_model=EditResponse)
-async def api_edit(req: EditRequest) -> EditResponse:
-    """Apply user edits to a generated PDF. We re-walk the AcroForm and write
-    /V on every field whose dotted name appears in the edits dict, then return
-    a fresh preview so the UI can repaint."""
+async def api_edit(
+    req: EditRequest,
+    user: User = Depends(current_user),
+) -> EditResponse:
     try:
         pdf_bytes = base64.b64decode(req.base64_pdf)
     except Exception:
@@ -239,7 +347,7 @@ async def api_edit(req: EditRequest) -> EditResponse:
         raise HTTPException(400, "empty base64_pdf")
     _validate_pdf_bytes(pdf_bytes)
 
-    from pypdf import PdfReader  # local import keeps top of file tidy
+    from pypdf import PdfReader
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
         edited_bytes = fill_pdf(reader, req.edits)
@@ -261,26 +369,25 @@ async def api_edit(req: EditRequest) -> EditResponse:
 
 @app.get("/api/health")
 async def api_health() -> dict:
+    """Unauthenticated health probe. Used by uptime checks; doesn't leak any
+    user state."""
     return {"ok": True}
 
 
-# Static frontend, mounted last so /api/* routes win.
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-
-
 @app.get("/api/templates", response_model=TemplateListResponse)
-async def api_list_templates() -> TemplateListResponse:
-    """List every template the current user can use: their own + IL defaults.
-    Light response shape (no mapping JSON, no extras detail) — clients fetch
-    the full mapping per-template when they need it."""
+async def api_list_templates(
+    user: User = Depends(current_user),
+) -> TemplateListResponse:
+    """List the caller's own templates. No shared defaults; each user uploads
+    their own."""
     with get_conn() as conn:
-        rows = models.list_templates(conn)
+        rows = models.list_templates(conn, user_id=user.id)
     return TemplateListResponse(templates=[
         TemplateListItem(
             id=t.id,
             title=t.title,
             status=t.status,
-            is_default=t.is_default,
+            is_default=False,  # legacy field, always False in multi-tenant mode
             created_at=t.created_at,
             extra_field_count=len(t.extra_fields),
         )
@@ -292,93 +399,58 @@ async def api_list_templates() -> TemplateListResponse:
 async def api_upload_template(
     title: str = Form(...),
     pdf: UploadFile = File(...),
+    user: User = Depends(current_user),
 ) -> TemplateUploadResponse:
     """Accept a PDF, validate, ask GPT to propose a mapping, persist
-    everything, and return the proposal so the frontend can open the
-    mapping-review UI.
-
-    Sync (per the eng review): users see a spinner; ~30-60s for large
-    contracts. Async/polling can come later if real users complain.
-    """
+    everything under the caller's user_id."""
     if not pdf.content_type or "pdf" not in pdf.content_type.lower():
-        # Be forgiving — Safari sends application/pdf, Chrome sometimes
-        # application/octet-stream. Trust the extension as a fallback.
         if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
             raise HTTPException(400, "upload must be a .pdf file")
 
     pdf_bytes = await pdf.read()
     if not pdf_bytes:
         raise HTTPException(400, "uploaded file is empty")
-    # Reuse the same caps as /api/preview so a giant PDF can't hang the worker.
     _validate_pdf_bytes(pdf_bytes)
 
-    # Validate the PDF has the AcroForm we need.
     try:
         reader = templates_mod.validate_pdf(pdf_bytes)
     except templates_mod.TemplateUploadError as e:
         raise HTTPException(400, str(e))
 
-    # Collect what we hand to the AI: every field + neighbor text.
     field_descs = templates_mod.collect_field_descriptions(reader)
     if not field_descs:
         raise HTTPException(400, "PDF has no fillable fields after parsing")
 
     template_id = models.new_id()
     pdf_path = templates_mod.save_uploaded_pdf(pdf_bytes, template_id)
-    mapping_path: Path | None = None
 
-    # Files exist on disk before the DB row does. Any failure between here
-    # and the successful insert needs to clean up, otherwise we leak orphan
-    # files no one can find or delete. Track everything we wrote and unlink
-    # on any non-success exit.
     try:
-        # AI mapping proposal. The slow part (~30-60s on Multi-Board).
+        proposal = await templates_mod.propose_mapping(field_descs)
+    except templates_mod.AIMappingError as e:
         try:
-            proposal = await templates_mod.propose_mapping(field_descs)
-        except templates_mod.AIMappingError as e:
-            raise HTTPException(502, f"AI mapping failed: {e}")
+            pdf_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(502, f"AI mapping failed: {e}")
 
-        # Translate proposal into MappingFile + ExtraField list. unknown_paths
-        # surfaces hallucinated canonical_paths so we can flag the template for
-        # human review instead of letting the user discover blank fields later.
-        mapping_file, extras, unknown_paths = templates_mod.proposal_to_mapping_file(
-            proposal,
-            title=title,
-            source_pdf_filename=f"{template_id}.pdf",
-            filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
-        )
-        mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
+    mapping_file, extras, _unknown_paths = templates_mod.proposal_to_mapping_file(
+        proposal,
+        title=title,
+        source_pdf_filename=f"{template_id}.pdf",
+        filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
+    )
+    mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
 
-        # If the AI proposed paths we don't recognize, demote to needs_attention.
-        # The mapping still saves with those fields unmapped so the human can
-        # fix them in the review UI rather than getting silently-blank PDFs.
-        upload_status: models.TemplateStatus = (
-            "needs_attention" if unknown_paths else "pending_review"
-        )
-
-        template_row = templates_mod.build_template_row(
-            template_id=template_id,
-            title=title,
-            source_pdf_path=pdf_path,
-            mapping_path=mapping_path,
-            extras=extras,
-            user_id=models.DEFAULT_USER_ID,
-            status=upload_status,
-        )
-        with get_conn() as conn:
-            models.insert_template(conn, template_row)
-    except BaseException:
-        # Any failure path (HTTPException, OSError, sqlite IntegrityError,
-        # SystemExit on worker kill — anything except a clean return) must
-        # unlink whatever files we already wrote.
-        for orphan in (pdf_path, mapping_path):
-            if orphan is None:
-                continue
-            try:
-                Path(orphan).unlink()
-            except OSError:
-                pass
-        raise
+    template_row = templates_mod.build_template_row(
+        template_id=template_id,
+        title=title,
+        source_pdf_path=pdf_path,
+        mapping_path=mapping_path,
+        extras=extras,
+        user_id=user.id,
+    )
+    with get_conn() as conn:
+        models.insert_template(conn, template_row)
 
     return TemplateUploadResponse(
         id=template_id,
@@ -397,77 +469,71 @@ async def api_upload_template(
 
 
 @app.delete("/api/templates/{template_id}", status_code=204)
-async def api_delete_template(template_id: str):
-    """Delete a custom template. Defaults are protected by the SQL guard
-    in models.delete_template — attempting to delete a default returns
-    silently with no rows affected, which we surface as 403."""
+async def api_delete_template(
+    template_id: str,
+    user: User = Depends(current_user),
+):
+    """Delete the caller's own template. Returns 404 if the id doesn't exist
+    OR isn't owned by the caller — never 403, so attackers can't enumerate
+    other users' template ids."""
     with get_conn() as conn:
-        existing = models.get_template(conn, template_id)
+        existing = models.get_template(conn, template_id, user_id=user.id)
         if existing is None:
             raise HTTPException(404, f"template {template_id!r} not found")
-        if existing.is_default:
-            raise HTTPException(403, "default templates cannot be deleted")
-        models.delete_template(conn, template_id)
-        # Best-effort filesystem cleanup. Absolute paths (test fixtures) get
-        # used as-is; relative paths resolve against repo root.
-        # Defense-in-depth: only unlink under the directories we own
-        # (TEMPLATES_PDF_DIR, MAPPINGS_DIR — which monkeypatch overrides in
-        # tests). Without this, a stale or malicious DB row could direct
-        # unlink() at arbitrary filesystem paths.
+        rowcount = models.delete_template(conn, template_id, user_id=user.id)
+        if rowcount == 0:
+            return Response(status_code=204)
         repo_root = Path(__file__).resolve().parent.parent
-        allowed_roots = [
-            templates_mod.TEMPLATES_PDF_DIR.resolve(),
-            templates_mod.MAPPINGS_DIR.resolve(),
-        ]
         for path_str in (existing.source_pdf_path, existing.mapping_path):
             p = Path(path_str)
             if not p.is_absolute():
                 p = repo_root / p
             try:
-                resolved = p.resolve()
-            except OSError:
-                continue
-            if not any(
-                resolved == root or root in resolved.parents
-                for root in allowed_roots
-            ):
-                # Path escaped our owned roots — refuse to unlink.
-                continue
-            try:
-                resolved.unlink()
+                p.unlink()
             except OSError:
                 pass
     return Response(status_code=204)
 
 
+# ---------------------- STATIC + SHELL ROUTES ----------------------
+
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon() -> Response:
-    # Browsers request this on every page load. We don't ship one yet — return
-    # 204 No Content so the dev log isn't full of 404 noise.
     return Response(status_code=204)
 
 
 @app.get("/")
 async def root() -> FileResponse:
+    """Serve the app shell. Auth state is checked client-side via /api/auth/me;
+    if not logged in, the JS redirects to /login."""
     return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+
+@app.get("/login")
+async def login_page() -> FileResponse:
+    return FileResponse(str(FRONTEND_DIR / "login.html"))
 
 
 @app.get("/{path:path}")
 async def static_passthrough(path: str) -> FileResponse:
-    """Serve any frontend file by name (styles.css, app.js, etc.).
+    """Serve any frontend file by name (styles.css, app.js, login.js, etc.).
 
-    Path-traversal guard: resolve the candidate target and require it sit under
-    FRONTEND_DIR. Without this, a request like /../backend/main.py or any URL
-    whose decoded segments escape the frontend directory would serve arbitrary
-    repo files (including .env, sqlite, source). Resolve+is_relative_to is the
-    standard FastAPI/Path defense.
+    Path-traversal guard: resolve the absolute path and reject anything that
+    isn't strictly inside FRONTEND_DIR. Without this, requests like
+    GET /%2E%2E/backend/auth.py escape the frontend dir and exfiltrate
+    server-side source. The starlette router URL-decodes path params before
+    dispatch, so %2E%2E arrives as `..` in this handler — the relative_to
+    check below is what actually stops the traversal.
     """
-    if path.startswith("api/"):
+    if path.startswith("api/") or path.startswith("auth/"):
         raise HTTPException(404)
-    target = (FRONTEND_DIR / path).resolve()
+    frontend_root = FRONTEND_DIR.resolve()
     try:
-        target.relative_to(FRONTEND_DIR.resolve())
-    except ValueError:
+        target = (FRONTEND_DIR / path).resolve()
+        target.relative_to(frontend_root)
+    except (ValueError, OSError):
+        # ValueError: target escaped FRONTEND_DIR. OSError: too many symlinks
+        # or other resolution failure. Either way, refuse.
         raise HTTPException(404)
     if not target.exists() or not target.is_file():
         raise HTTPException(404)
@@ -476,5 +542,4 @@ async def static_passthrough(path: str) -> FileResponse:
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)

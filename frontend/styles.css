@@ -1256,3 +1256,58 @@ input, textarea, select, button { font-family: inherit; }
   }
   .pane-left { border-right: 0; border-bottom: 1px solid var(--border); }
 }
+
+/* ---------- empty doc-list state (no templates yet) ---------- */
+.doc-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 36px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  gap: 10px;
+}
+.doc-list-empty-icon {
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.doc-list-empty-title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 18px;
+  margin: 0;
+  color: var(--text);
+}
+.doc-list-empty-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+  max-width: 320px;
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+/* ---------- drawer account block (signed-in email + logout) ---------- */
+.drawer-account {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.drawer-account-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.drawer-account-email {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-all;
+}

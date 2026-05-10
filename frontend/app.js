@@ -14,52 +14,18 @@
 // (Chrome, Safari, Firefox) honor /NeedAppearances=true and render filled
 // values correctly with zero extra code.
 
-// The 4 IL default templates (all map to existing backend mappings) plus
-// any custom uploaded ones are listed via /api/templates. IMPLEMENTED_DOCS
-// is now seeded from that list at boot rather than hardcoded.
+// Templates the user has uploaded. IMPLEMENTED_DOCS is the live set used
+// when validating which keys can be passed to /api/generate.
 const IMPLEMENTED_DOCS = new Set();
 
-// Friendly title cache. Seeded with the IL defaults so old toast/preview
-// code still has nice labels even before /api/templates returns. Custom
-// templates' titles are merged in once we hear back.
-const FRIENDLY = {
-  lease_invoice: "Lease Invoice",
-  lease_abstract: "Lease Abstract",
-  tenant_rep: "Tenant Rep",
-  multiboard: "Multi-Board Contract",
-};
+// Friendly title cache, populated as templates load. Used for tab labels
+// and toasts. Empty until the user uploads templates — there are no shared
+// defaults in multi-tenant mode.
+const FRIENDLY = {};
 
 // Last fetched template list (lightweight). Used by the doc-card renderer
 // + delete handler.
 let knownTemplates = [];
-
-// localStorage-backed set of template ids the user has hidden from the
-// picker. IL defaults can't be hard-deleted (they're seeded into the
-// shared DB), but each agent can hide ones they don't use. Custom
-// templates also get hidden when soft-removed via the same mechanism;
-// the "Delete custom template" path also hard-deletes from the server.
-const HIDDEN_TEMPLATES_KEY = "paperwork.hiddenTemplates";
-
-function loadHiddenTemplates() {
-  try {
-    const raw = localStorage.getItem(HIDDEN_TEMPLATES_KEY);
-    if (!raw) return new Set();
-    return new Set(JSON.parse(raw));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveHiddenTemplates(set) {
-  try {
-    localStorage.setItem(HIDDEN_TEMPLATES_KEY, JSON.stringify([...set]));
-  } catch {
-    // Quota or private-mode: silently no-op. The user will see their hide
-    // toggle revert on next reload, which is annoying but not broken.
-  }
-}
-
-let hiddenTemplates = loadHiddenTemplates();
 
 const els = {
   notesWrap: document.getElementById("notes-wrap"),
@@ -164,6 +130,33 @@ function computeGenerateState() {
     return "view";
   }
   return "regenerate";
+}
+
+// ---------- auth helpers ----------
+// Wrap fetch so any 401 surfaces as "session gone, send the user to /login"
+// without each call site having to re-implement that branch. Cookie auth means
+// we don't have to set headers — the browser already attaches the session
+// cookie to same-origin requests.
+async function authedFetch(input, init = {}) {
+  const res = await fetch(input, init);
+  if (res.status === 401) {
+    // Best-effort; ignore failures (we're navigating away anyway).
+    window.location.href = "/login";
+    // Throwing here aborts the caller's success path. Caller's catch logs
+    // a toast that the user won't see (we've already navigated).
+    throw new Error("not authenticated");
+  }
+  return res;
+}
+
+async function logout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Ignore network errors — the cookie's already going to be cleared
+    // server-side or client-side eventually.
+  }
+  window.location.href = "/login";
 }
 
 // ---------- toasts ----------
@@ -299,26 +292,40 @@ function collectFields() {
   return fields;
 }
 
-// ---------- dynamic template list (Pillar 2) ----------
-
-// Friendly subtitle for the 4 IL defaults. Custom uploads use their
-// extra_field_count + a generic note.
-const DEFAULT_DOC_SUB = {
-  lease_invoice: "Commission invoice mailed to landlord — property, tenant, amount due.",
-  lease_abstract: "One-page summary — property, dates, rent, commission, concessions.",
-  tenant_rep: "Exclusive tenant rep — client info, term, commission, dual agency election.",
-  multiboard: "14-page Illinois sale contract — buyer/seller, price, contingencies, closing.",
-};
-
-// Pre-checked by default. Users can uncheck individual ones after first load
-// or upload a custom template (which auto-checks itself).
-const DEFAULT_CHECKED = new Set(["lease_invoice", "lease_abstract", "tenant_rep", "multiboard"]);
+// ---------- dynamic template list ----------
 
 async function fetchTemplates() {
-  const res = await fetch("/api/templates");
+  const res = await authedFetch("/api/templates");
   if (!res.ok) throw new Error(`templates list failed (${res.status})`);
   const data = await res.json();
   return data.templates || [];
+}
+
+function renderEmptyState() {
+  // First-run UX: agent just signed up, has no templates yet. The big
+  // empty state is the primary onboarding surface — pointing them at the
+  // "Upload template" button below shouldn't be a treasure hunt.
+  els.docList.innerHTML = `
+    <div class="doc-list-empty">
+      <div class="doc-list-empty-icon" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+          <line x1="12" y1="12" x2="12" y2="18"/>
+        </svg>
+      </div>
+      <h3 class="doc-list-empty-title">No templates yet</h3>
+      <p class="doc-list-empty-sub">Upload a PDF with fillable form fields to get started. The AI will map each field to your transaction data.</p>
+      <button type="button" class="btn-primary btn-sm" id="empty-upload-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Upload your first template
+      </button>
+    </div>
+  `;
+  // Wire the CTA to the existing upload-modal opener.
+  const cta = document.getElementById("empty-upload-btn");
+  if (cta) cta.addEventListener("click", openUploadModal);
 }
 
 function renderDocCards(templates, opts = {}) {
@@ -334,12 +341,13 @@ function renderDocCards(templates, opts = {}) {
   els.docList.innerHTML = "";
   IMPLEMENTED_DOCS.clear();
 
-  // Filter out templates the user has hidden via localStorage. They can
-  // be restored from the "Show hidden" link below the list.
-  const visible = templates.filter((t) => !hiddenTemplates.has(t.id));
-  updateShowHiddenLink(templates);
+  if (!templates.length) {
+    renderEmptyState();
+    updateGenerateBar();
+    return;
+  }
 
-  for (const t of visible) {
+  for (const t of templates) {
     IMPLEMENTED_DOCS.add(t.id);
     if (t.title) FRIENDLY[t.id] = t.title;
 
@@ -347,9 +355,12 @@ function renderDocCards(templates, opts = {}) {
     card.className = "doc-card";
     card.dataset.doc = t.id;
 
+    // New uploads auto-check; existing cards preserve their previous state.
+    // First load defaults to checked so the user doesn't have to click every
+    // template before extracting.
     const checked = previousChecked.has(t.id)
       ? previousChecked.get(t.id)
-      : (DEFAULT_CHECKED.has(t.id) || (opts.autoCheck && opts.autoCheck === t.id));
+      : (opts.autoCheck === t.id || !previousChecked.size);
 
     // checkbox
     const checkLabel = document.createElement("label");
@@ -364,7 +375,6 @@ function renderDocCards(templates, opts = {}) {
     checkLabel.appendChild(checkBox);
     card.appendChild(checkLabel);
 
-    // body
     const body = document.createElement("div");
     body.className = "doc-body";
 
@@ -382,22 +392,16 @@ function renderDocCards(templates, opts = {}) {
     pill.textContent = "awaiting extraction";
     actions.appendChild(pill);
 
-    // Every card gets a remove button. For custom templates this hard-deletes
-    // (DELETE /api/templates/<id>); for defaults it soft-hides via
-    // localStorage so the seeded shared template stays in the DB and the
-    // user can restore via "Show hidden" below.
     const del = document.createElement("button");
     del.type = "button";
     del.className = "btn-icon-sm";
-    const verb = t.is_default ? "Hide" : "Delete";
-    del.title = `${verb} ${t.title}`;
-    del.setAttribute("aria-label", `${verb} ${t.title}`);
+    del.title = `Delete ${t.title}`;
+    del.setAttribute("aria-label", `Delete ${t.title}`);
     del.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
     del.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (t.is_default) hideTemplate(t);
-      else deleteTemplate(t);
+      deleteTemplate(t);
     });
     actions.appendChild(del);
     row.appendChild(actions);
@@ -405,28 +409,15 @@ function renderDocCards(templates, opts = {}) {
 
     const sub = document.createElement("p");
     sub.className = "doc-sub";
-    if (t.is_default) {
-      sub.textContent = DEFAULT_DOC_SUB[t.id] || "Default Illinois template.";
-    } else if (t.extra_field_count > 0) {
-      sub.textContent = `Custom template — ${t.extra_field_count} extra field${t.extra_field_count === 1 ? "" : "s"} the AI will look for in your notes.`;
+    if (t.extra_field_count > 0) {
+      sub.textContent = `${t.extra_field_count} extra field${t.extra_field_count === 1 ? "" : "s"} the AI will look for in your notes.`;
     } else {
-      sub.textContent = "Custom template — fields map to the canonical schema.";
+      sub.textContent = "Fields map to the canonical schema.";
     }
     body.appendChild(sub);
 
     const meta = document.createElement("div");
     meta.className = "doc-meta";
-    if (t.is_default) {
-      const p = document.createElement("span");
-      p.className = "meta-pill";
-      p.textContent = "IL default";
-      meta.appendChild(p);
-    } else {
-      const p = document.createElement("span");
-      p.className = "meta-pill custom";
-      p.textContent = "Custom";
-      meta.appendChild(p);
-    }
     if (t.status === "ready") {
       const p = document.createElement("span");
       p.className = "meta-pill ready";
@@ -444,77 +435,15 @@ function renderDocCards(templates, opts = {}) {
     els.docList.appendChild(card);
   }
 
-  // Re-run dependent UI now that the cards exist
   computeReadinessAfterExtract();
   updateGenerateBar();
-}
-
-function hideTemplate(template) {
-  // Soft-hide for IL defaults: stays in the DB, just disappears from this
-  // browser's picker until the user clicks "Show hidden" below the list.
-  hiddenTemplates.add(template.id);
-  saveHiddenTemplates(hiddenTemplates);
-  renderDocCards(knownTemplates);
-  toast(`Hid "${template.title}" — show again from below the list`, "info", 3500);
-}
-
-function unhideTemplate(template) {
-  hiddenTemplates.delete(template.id);
-  saveHiddenTemplates(hiddenTemplates);
-  renderDocCards(knownTemplates);
-}
-
-function updateShowHiddenLink(allTemplates) {
-  // Render (or remove) the "Show hidden (N)" link below the doc list.
-  // Only shows when the user has actually hidden something.
-  const existing = document.getElementById("show-hidden-link");
-  if (existing) existing.remove();
-
-  const hiddenList = allTemplates.filter((t) => hiddenTemplates.has(t.id));
-  if (hiddenList.length === 0) return;
-
-  const link = document.createElement("button");
-  link.type = "button";
-  link.id = "show-hidden-link";
-  link.className = "btn-link-sm";
-  link.textContent = `Show ${hiddenList.length} hidden template${hiddenList.length === 1 ? "" : "s"}…`;
-  link.addEventListener("click", () => openHiddenList(hiddenList));
-  // Append after the doc list, before the upload row. The upload row sits
-  // in a sibling .upload-template-row container, so we insertBefore that.
-  const uploadRow = document.querySelector(".upload-template-row");
-  if (uploadRow && uploadRow.parentNode) {
-    uploadRow.parentNode.insertBefore(link, uploadRow);
-  } else {
-    els.docList.parentNode.appendChild(link);
-  }
-}
-
-function openHiddenList(hiddenList) {
-  // Tiny inline popover-ish list. Keeping this dead simple: a confirm
-  // dialog per template, or a one-shot "restore all" prompt.
-  if (hiddenList.length === 1) {
-    const t = hiddenList[0];
-    if (window.confirm(`Restore "${t.title}" to the picker?`)) {
-      unhideTemplate(t);
-    }
-    return;
-  }
-  const restoreAll = window.confirm(
-    `${hiddenList.length} hidden templates:\n\n` +
-    hiddenList.map((t) => `  • ${t.title}`).join("\n") +
-    `\n\nRestore all of them?`
-  );
-  if (!restoreAll) return;
-  for (const t of hiddenList) hiddenTemplates.delete(t.id);
-  saveHiddenTemplates(hiddenTemplates);
-  renderDocCards(knownTemplates);
 }
 
 async function deleteTemplate(template) {
   const ok = window.confirm(`Delete "${template.title}"? This can't be undone.`);
   if (!ok) return;
   try {
-    const res = await fetch(`/api/templates/${encodeURIComponent(template.id)}`, {
+    const res = await authedFetch(`/api/templates/${encodeURIComponent(template.id)}`, {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 204) {
@@ -538,7 +467,6 @@ async function loadTemplates(opts = {}) {
   } catch (e) {
     els.docListLoading.hidden = true;
     toast(e.message || "couldn't load templates", "error");
-    // Show an empty state — user can still upload
     els.docList.innerHTML = '<div class="hint" style="padding: 16px;">Couldn\'t load templates. Refresh to retry.</div>';
   }
 }
@@ -763,7 +691,7 @@ const docState = new Map();
 const PREVIEW_MAX_WIDTH_CSS = 820;
 
 async function fetchPreview(base64Pdf) {
-  const res = await fetch("/api/preview", {
+  const res = await authedFetch("/api/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ base64_pdf: base64Pdf }),
@@ -946,7 +874,7 @@ async function saveEditsForActiveDoc() {
 
   setLoading(els.saveEditsBtn, true);
   try {
-    const res = await fetch("/api/edit", {
+    const res = await authedFetch("/api/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ base64_pdf: state.base64, edits }),
@@ -1161,7 +1089,7 @@ async function runExtract() {
   // ignores ids it doesn't recognize, so a stale list doesn't break extract.
   formData.append("active_template_ids", checkedDocKeys().join(","));
   try {
-    const res = await fetch("/api/extract", { method: "POST", body: formData });
+    const res = await authedFetch("/api/extract", { method: "POST", body: formData });
     if (!res.ok) {
       const detail = await res.text();
       throw new Error(`extract failed (${res.status}): ${detail}`);
@@ -1236,7 +1164,7 @@ async function runGenerate(triggerBtn) {
       agent: readProfileFromInputs(),
       documents: allSelected,
     };
-    const res = await fetch("/api/generate", {
+    const res = await authedFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -1472,7 +1400,7 @@ async function submitUpload() {
   formData.append("pdf", uploadFile, uploadFile.name);
 
   try {
-    const res = await fetch("/api/templates/upload", {
+    const res = await authedFetch("/api/templates/upload", {
       method: "POST",
       body: formData,
     });
@@ -1561,6 +1489,40 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ---------- bootstrap ----------
-loadProfile();
-loadTemplates();   // render the doc list dynamically; computeReadiness + updateGenerateBar fire on completion
-updateGenerateBar();
+async function bootstrap() {
+  // Auth gate: hit /api/auth/me before doing anything. 401 → /login.
+  // Doing this BEFORE loadTemplates avoids the visual flash where the doc
+  // list briefly tries to render then gets redirected.
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    if (!res.ok) {
+      // Server error on auth probe — show a toast and keep going. The user
+      // will hit a 401 elsewhere if they're really not authenticated.
+      toast("Could not verify login. Some features may not work.", "error");
+    } else {
+      const me = await res.json();
+      // Stash the email so we can show it in the agent-profile drawer.
+      window.__memoirUser = me;
+      const slot = document.getElementById("logged-in-email");
+      if (slot && me.email) slot.textContent = me.email;
+    }
+  } catch (e) {
+    // Network error or similar; let the user see the app shell and they'll
+    // bump into auth errors on the next API call.
+    console.error("auth probe failed", e);
+  }
+
+  loadProfile();
+  loadTemplates();
+  updateGenerateBar();
+}
+
+// Wire the logout button if present.
+const logoutBtn = document.getElementById("logout-btn");
+if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+bootstrap();

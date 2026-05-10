@@ -1,7 +1,7 @@
 """
-Tests for the template upload pipeline (Pillar 2 chunk 4).
+Tests for the template upload pipeline (multi-tenant).
 
-Three layers:
+Layers:
   - validate_pdf rejects bad inputs (encrypted, no AcroForm, malformed)
   - proposal_to_mapping_file translates AI output into the on-disk shape
     correctly (canonical paths vs extras vs the unmapped fallback)
@@ -10,20 +10,19 @@ Three layers:
 The OpenAI call is the slow + expensive part, so we monkeypatch
 templates.propose_mapping to return a hand-built ProposedMapping instead of
 hitting the real API.
+
+Multi-tenancy specifics:
+  - Every endpoint requires a session cookie (provided by authed_client fixture)
+  - Uploaded templates are scoped to the caller's user_id
+  - Cross-user reads/deletes return 404, never 403, never the row
 """
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-os.environ.setdefault("OPENAI_API_KEY", "sk-test")
-
-from backend import db, models, templates as templates_mod
-from backend.main import app
+from backend import models, templates as templates_mod
 from backend.templates import (
     ProposedField,
     ProposedMapping,
@@ -42,7 +41,6 @@ LEASE_INVOICE_PDF = REPO_ROOT / "templates" / "pdf" / "2025 Compass Chicagoland 
 def test_validate_pdf_accepts_a_real_acroform_pdf():
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
     reader = validate_pdf(pdf_bytes)
-    # walk_fields was already called inside; sanity check that it found fields
     from backend.pdf_introspect import walk_fields
     assert len(walk_fields(reader)) > 0
 
@@ -55,9 +53,6 @@ def test_validate_pdf_rejects_garbage():
 def test_validate_pdf_rejects_pdf_without_acroform(tmp_path: Path):
     """Build a one-page PDF with NO form fields and confirm we reject it."""
     from pypdf import PdfReader, PdfWriter
-    # Use a simple stream — pypdf can produce a blank PDF but we don't even
-    # need that level of cleanliness. Just take any AcroForm PDF and strip
-    # /AcroForm from the catalog.
     src = PdfReader(str(LEASE_INVOICE_PDF))
     writer = PdfWriter(clone_from=src)
     cat = writer._root_object
@@ -91,24 +86,18 @@ def test_proposal_translates_canonical_paths_to_template_strings():
         proposal, title="Test", source_pdf_filename="abc.pdf",
         filled_filename="test_filled.pdf",
     )
-    # Canonical paths become {<path>} interpolation strings
     assert mapping.fields["TENANTS NAME"] == "{tenant_or_buyer_names}"
     assert mapping.fields["PROPERTY ADDRESS"] == "{property.address}"
-    # Extras get nested under template_extras.<name>
     assert mapping.fields["PET DEPOSIT"] == "{template_extras.pet_deposit}"
-    # And come back in the extras list with metadata preserved
     assert len(extras) == 1
     assert extras[0].name == "pet_deposit"
     assert extras[0].type == "money"
-    # All canonical paths in the fixture are valid TransactionFields keys
     assert unknown_paths == []
 
 
 def test_proposal_unmapped_field_renders_empty_string():
-    """If the AI returns neither canonical_path nor extra_field_name (it
-    shouldn't but we shouldn't crash), the field is left as ''."""
     proposal = ProposedMapping(fields=[
-        ProposedField(pdf_field="MYSTERY"),  # no canonical, no extra
+        ProposedField(pdf_field="MYSTERY"),
     ])
     mapping, _extras, _unknown = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
@@ -133,11 +122,10 @@ def test_proposal_extra_field_type_defaults_to_text():
 
 
 def test_proposal_unknown_canonical_path_is_demoted_to_unmapped():
-    """If GPT hallucinates a canonical_path that isn't in TransactionFields/
-    AgentProfile/computed values, we leave the field unmapped (empty string)
-    AND surface it in unknown_paths so the upload pipeline can flag the
-    template for human review instead of letting the user discover blank
-    fields at fill time."""
+    """If GPT hallucinates a canonical_path, we leave the field unmapped AND
+    surface it in unknown_paths so the upload pipeline can flag the template
+    for human review instead of letting the user discover blank fields at
+    fill time."""
     proposal = ProposedMapping(fields=[
         ProposedField(pdf_field="GOOD", canonical_path="property.address"),
         ProposedField(pdf_field="BAD", canonical_path="borrower.full_name"),
@@ -156,9 +144,7 @@ def test_proposal_unknown_canonical_path_is_demoted_to_unmapped():
 
 def test_proposal_computed_value_paths_are_allowed():
     """Computed values like {today}, {county_suffix}, {tenant_1_name} are
-    legitimate canonical_paths even though they aren't TransactionFields keys.
-    The allowlist must include them or the AI mapper would have its valid
-    'today → today' proposals wrongly demoted."""
+    legitimate canonical_paths even though they aren't TransactionFields keys."""
     proposal = ProposedMapping(fields=[
         ProposedField(pdf_field="DATE_OF_SIGNING", canonical_path="today"),
         ProposedField(pdf_field="ADDR_LINE", canonical_path="property.address_full"),
@@ -173,38 +159,19 @@ def test_proposal_computed_value_paths_are_allowed():
     assert unknown_paths == []
 
 
-# ---- API endpoint tests (DB + endpoint, AI mocked) ----
+# ---- API endpoint tests (real Postgres + endpoint, AI mocked) ----
 
-@pytest.fixture
-def app_with_temp_db(tmp_path, monkeypatch):
-    """Point db.DB_PATH at a temp sqlite + run migrations. Also redirect the
-    template files dirs so we don't pollute the real templates/ tree."""
-    test_db = tmp_path / "test.sqlite"
-    test_pdf_dir = tmp_path / "pdf"
-    test_mapping_dir = tmp_path / "mappings"
-    test_pdf_dir.mkdir()
-    test_mapping_dir.mkdir()
-    monkeypatch.setattr(db, "DB_PATH", test_db)
-    monkeypatch.setattr(templates_mod, "TEMPLATES_PDF_DIR", test_pdf_dir)
-    monkeypatch.setattr(templates_mod, "MAPPINGS_DIR", test_mapping_dir)
-    db.run_migrations(test_db)
-    yield TestClient(app)
-
-
-def test_list_templates_includes_seeded_defaults(app_with_temp_db):
-    r = app_with_temp_db.get("/api/templates")
+def test_list_templates_starts_empty(authed_client, isolated_template_dirs):
+    """No more shared defaults — fresh user starts with an empty list."""
+    r = authed_client.get("/api/templates")
     assert r.status_code == 200
-    data = r.json()
-    ids = {t["id"] for t in data["templates"]}
-    assert {"lease_invoice", "lease_abstract", "tenant_rep", "multiboard"} <= ids
-    for t in data["templates"]:
-        if t["id"] in {"lease_invoice", "lease_abstract", "tenant_rep", "multiboard"}:
-            assert t["is_default"] is True
+    assert r.json() == {"templates": []}
 
 
-def test_upload_template_happy_path(app_with_temp_db, monkeypatch):
-    """End-to-end: real PDF + mocked AI call. Verifies the row is inserted,
-    the mapping JSON is written, and the response shape is right."""
+def test_upload_template_happy_path(authed_client, isolated_template_dirs, monkeypatch):
+    """End-to-end: real PDF + mocked AI call. Verifies the row is inserted
+    under the caller's user_id, the mapping JSON is written, and the response
+    shape is right."""
     fake_proposal = ProposedMapping(fields=[
         ProposedField(pdf_field="TENANTS NAME", canonical_path="tenant_or_buyer_names"),
         ProposedField(pdf_field="PROPERTY ADDRESS", canonical_path="property.address"),
@@ -221,7 +188,7 @@ def test_upload_template_happy_path(app_with_temp_db, monkeypatch):
     monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
 
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
-    r = app_with_temp_db.post(
+    r = authed_client.post(
         "/api/templates/upload",
         data={"title": "Custom Lease Invoice"},
         files={"pdf": ("custom.pdf", pdf_bytes, "application/pdf")},
@@ -233,18 +200,16 @@ def test_upload_template_happy_path(app_with_temp_db, monkeypatch):
     assert data["field_count"] == 7
     assert len(data["extra_fields"]) == 1
     assert data["extra_fields"][0]["name"] == "invoice_number"
-    # Mapping shape sanity check
     assert data["mapping"]["fields"]["TENANTS NAME"] == "{tenant_or_buyer_names}"
     assert data["mapping"]["fields"]["LEASE INVOICE"] == "{template_extras.invoice_number}"
 
-    # And it shows up in the list
-    listing = app_with_temp_db.get("/api/templates").json()
+    listing = authed_client.get("/api/templates").json()
     titles = [t["title"] for t in listing["templates"]]
     assert "Custom Lease Invoice" in titles
 
 
-def test_upload_rejects_non_pdf(app_with_temp_db):
-    r = app_with_temp_db.post(
+def test_upload_rejects_non_pdf(authed_client, isolated_template_dirs):
+    r = authed_client.post(
         "/api/templates/upload",
         data={"title": "x"},
         files={"pdf": ("notes.txt", b"hello world", "text/plain")},
@@ -252,8 +217,8 @@ def test_upload_rejects_non_pdf(app_with_temp_db):
     assert r.status_code == 400
 
 
-def test_upload_rejects_empty_file(app_with_temp_db):
-    r = app_with_temp_db.post(
+def test_upload_rejects_empty_file(authed_client, isolated_template_dirs):
+    r = authed_client.post(
         "/api/templates/upload",
         data={"title": "x"},
         files={"pdf": ("empty.pdf", b"", "application/pdf")},
@@ -261,21 +226,12 @@ def test_upload_rejects_empty_file(app_with_temp_db):
     assert r.status_code == 400
 
 
-def test_delete_default_template_is_forbidden(app_with_temp_db):
-    r = app_with_temp_db.delete("/api/templates/lease_invoice")
-    assert r.status_code == 403
-    # And it's still there
-    listing = app_with_temp_db.get("/api/templates").json()
-    ids = [t["id"] for t in listing["templates"]]
-    assert "lease_invoice" in ids
-
-
-def test_delete_unknown_template_is_404(app_with_temp_db):
-    r = app_with_temp_db.delete("/api/templates/does-not-exist")
+def test_delete_unknown_template_is_404(authed_client, isolated_template_dirs):
+    r = authed_client.delete("/api/templates/does-not-exist")
     assert r.status_code == 404
 
 
-def test_delete_custom_template_round_trip(app_with_temp_db, monkeypatch):
+def test_delete_custom_template_round_trip(authed_client, isolated_template_dirs, monkeypatch):
     """Upload a template, delete it, verify it's gone from the list AND the
     files are cleaned up."""
     async def fake_propose(_descs):
@@ -293,7 +249,7 @@ def test_delete_custom_template_round_trip(app_with_temp_db, monkeypatch):
     monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
 
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
-    r = app_with_temp_db.post(
+    r = authed_client.post(
         "/api/templates/upload",
         data={"title": "Trash Me"},
         files={"pdf": ("custom.pdf", pdf_bytes, "application/pdf")},
@@ -301,24 +257,21 @@ def test_delete_custom_template_round_trip(app_with_temp_db, monkeypatch):
     assert r.status_code == 200
     template_id = r.json()["id"]
 
-    # Confirm files exist
     pdf_on_disk = templates_mod.TEMPLATES_PDF_DIR / f"{template_id}.pdf"
     mapping_on_disk = templates_mod.MAPPINGS_DIR / f"{template_id}.json"
     assert pdf_on_disk.exists()
     assert mapping_on_disk.exists()
 
-    # Delete
-    r = app_with_temp_db.delete(f"/api/templates/{template_id}")
+    r = authed_client.delete(f"/api/templates/{template_id}")
     assert r.status_code == 204
 
-    # Row is gone, files are cleaned up
-    listing = app_with_temp_db.get("/api/templates").json()
+    listing = authed_client.get("/api/templates").json()
     assert template_id not in [t["id"] for t in listing["templates"]]
     assert not pdf_on_disk.exists()
     assert not mapping_on_disk.exists()
 
 
-def test_upload_ai_failure_cleans_up_pdf(app_with_temp_db, monkeypatch):
+def test_upload_ai_failure_cleans_up_pdf(authed_client, isolated_template_dirs, monkeypatch):
     """If GPT errors after we've saved the PDF, we should not leave an
     orphan file on disk."""
     async def fake_propose_fails(_descs):
@@ -328,7 +281,7 @@ def test_upload_ai_failure_cleans_up_pdf(app_with_temp_db, monkeypatch):
     before = list(templates_mod.TEMPLATES_PDF_DIR.iterdir())
 
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
-    r = app_with_temp_db.post(
+    r = authed_client.post(
         "/api/templates/upload",
         data={"title": "Will Fail"},
         files={"pdf": ("x.pdf", pdf_bytes, "application/pdf")},
@@ -337,3 +290,107 @@ def test_upload_ai_failure_cleans_up_pdf(app_with_temp_db, monkeypatch):
 
     after = list(templates_mod.TEMPLATES_PDF_DIR.iterdir())
     assert before == after, "orphan PDF left after AI failure"
+
+
+# ---- Multi-tenancy / IDOR tests ----
+
+def test_anonymous_request_is_401(clean_db):
+    """No cookie → 401 on every protected endpoint."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    client = TestClient(app)
+    assert client.get("/api/templates").status_code == 401
+    assert client.post("/api/templates/upload",
+                       data={"title": "x"},
+                       files={"pdf": ("x.pdf", b"%PDF-1.4 short", "application/pdf")}
+                       ).status_code == 401
+    assert client.delete("/api/templates/anything").status_code == 401
+
+
+def test_user_b_cannot_see_user_a_templates(two_authed_clients, isolated_template_dirs, monkeypatch):
+    """The privacy boundary. Alice uploads → Bob's list stays empty."""
+    alice, bob = two_authed_clients
+    async def fake_propose(_descs):
+        return ProposedMapping(fields=[
+            ProposedField(pdf_field="TENANTS NAME", canonical_path="tenant_or_buyer_names"),
+        ])
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
+    r = alice.post(
+        "/api/templates/upload",
+        data={"title": "Alice's Template"},
+        files={"pdf": ("a.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert r.status_code == 200
+
+    bob_listing = bob.get("/api/templates").json()
+    assert bob_listing["templates"] == []
+
+
+def test_user_b_delete_on_user_a_template_is_404_idor_safe(two_authed_clients, isolated_template_dirs, monkeypatch):
+    """The IDOR test. Bob obtains Alice's template id (from a leak, screenshare,
+    error msg) and tries every endpoint. All return 404 — never 403, which
+    would confirm 'this id exists, you just can't touch it'."""
+    alice, bob = two_authed_clients
+    async def fake_propose(_descs):
+        return ProposedMapping(fields=[
+            ProposedField(pdf_field="X", canonical_path="property.address"),
+        ])
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
+    r = alice.post(
+        "/api/templates/upload",
+        data={"title": "Alice's Secret"},
+        files={"pdf": ("a.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert r.status_code == 200
+    alice_template_id = r.json()["id"]
+
+    # Bob attempts DELETE on Alice's template.
+    r = bob.delete(f"/api/templates/{alice_template_id}")
+    assert r.status_code == 404
+
+    # Alice's template still exists from her perspective.
+    alice_listing = alice.get("/api/templates").json()
+    assert alice_template_id in [t["id"] for t in alice_listing["templates"]]
+
+
+def test_extract_only_resolves_caller_template_extras(two_authed_clients, isolated_template_dirs, monkeypatch):
+    """Active_template_ids that belong to another user are silently ignored
+    rather than activating their extras for the caller."""
+    alice, bob = two_authed_clients
+    async def fake_propose(_descs):
+        return ProposedMapping(fields=[
+            ProposedField(pdf_field="X", extra_field_name="alice_secret",
+                          extra_field_type="text", extra_field_description="x"),
+        ])
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
+    r = alice.post(
+        "/api/templates/upload",
+        data={"title": "Alice's"},
+        files={"pdf": ("a.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert r.status_code == 200
+    alice_template_id = r.json()["id"]
+
+    captured = {}
+    async def fake_extract(notes, images=None, template_extras=None):
+        captured["template_extras"] = template_extras
+        from backend.schema import TransactionFields
+        return TransactionFields()
+
+    from backend import main
+    monkeypatch.setattr(main, "extract_fields", fake_extract)
+
+    # Bob requests extraction with Alice's template id active.
+    r = bob.post(
+        "/api/extract",
+        data={"notes": "test", "active_template_ids": alice_template_id},
+    )
+    assert r.status_code == 200
+    # Bob's extract dropped the cross-user id silently.
+    assert captured["template_extras"] == {}

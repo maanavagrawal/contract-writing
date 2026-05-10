@@ -33,7 +33,6 @@ from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from .models import (
-    DEFAULT_USER_ID,
     ExtraField,
     Template,
     TemplateStatus,
@@ -474,10 +473,13 @@ def build_template_row(
     status: TemplateStatus = "pending_review",
 ) -> Template:
     """Construct a Template row. Paths are stored relative to repo root for
-    portability when inside the repo, absolute otherwise."""
+    portability when inside the repo, absolute otherwise. user_id is required
+    (no default) so a forgotten parameter doesn't silently leak ownership."""
+    if not user_id:
+        raise ValueError("user_id is required when building a template row")
     return Template(
         id=template_id,
-        user_id=user_id or DEFAULT_USER_ID,
+        user_id=user_id,
         title=title,
         source_pdf_path=_path_for_storage(source_pdf_path),
         mapping_path=_path_for_storage(mapping_path),

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in — memoir</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spectral:ital,wght@0,500;0,600;1,500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .auth-shell {
+        min-height: calc(100vh - 60px);
+        display: grid;
+        place-items: center;
+        padding: 40px 24px;
+      }
+      .auth-card {
+        width: 100%;
+        max-width: 380px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 32px;
+      }
+      .auth-card h1 {
+        font-family: var(--font-serif);
+        font-style: italic;
+        font-weight: 500;
+        font-size: 22px;
+        margin: 0 0 6px;
+      }
+      .auth-card p.lead {
+        color: var(--text-muted);
+        font-size: 13px;
+        margin: 0 0 20px;
+      }
+      .auth-card label {
+        display: block;
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+      }
+      .auth-card input[type="email"] {
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border-strong);
+        color: var(--text);
+        font-size: 14px;
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        outline: none;
+      }
+      .auth-card input[type="email"]:focus {
+        border-color: var(--focus-ring);
+        box-shadow: 0 0 0 3px var(--focus-ring-soft);
+      }
+      .auth-card button {
+        width: 100%;
+        margin-top: 14px;
+        background: var(--accent);
+        color: var(--bg);
+        font-weight: 600;
+        font-size: 14px;
+        padding: 10px 14px;
+        border: 0;
+        border-radius: var(--radius);
+        cursor: pointer;
+      }
+      .auth-card button:hover { background: var(--accent-hover); }
+      .auth-card button:disabled { opacity: 0.5; cursor: wait; }
+      .auth-state {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: var(--radius);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .auth-state.success {
+        background: var(--success-soft);
+        border: 1px solid var(--success-strong);
+        color: var(--text);
+      }
+      .auth-state.error {
+        background: var(--danger-soft);
+        border: 1px solid var(--danger);
+        color: var(--text);
+      }
+      .auth-disclaimer {
+        margin-top: 20px;
+        text-align: center;
+        font-size: 11px;
+        color: var(--text-subtle);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-text">
+          <span class="logo-title">memoir<span class="logo-mark" aria-hidden="true"></span></span>
+          <span class="logo-sub">Real estate paperwork, automated</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="auth-shell">
+      <div class="auth-card">
+        <h1>Sign in</h1>
+        <p class="lead">Enter your email and we'll send you a magic link.</p>
+
+        <form id="login-form">
+          <label for="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            autocomplete="email"
+            required
+            placeholder="you@brokerage.com"
+            autofocus
+          />
+          <button type="submit" id="submit-btn">Send magic link</button>
+        </form>
+
+        <div id="state" class="auth-state" hidden></div>
+
+        <p class="auth-disclaimer">
+          memoir generates drafts for agent review. Output is not a substitute for licensed counsel.
+        </p>
+      </div>
+    </main>
+
+    <script>
+      const form = document.getElementById('login-form');
+      const stateEl = document.getElementById('state');
+      const btn = document.getElementById('submit-btn');
+      const emailInput = document.getElementById('email');
+
+      function showState(message, kind) {
+        stateEl.textContent = message;
+        stateEl.className = 'auth-state ' + kind;
+        stateEl.hidden = false;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = emailInput.value.trim();
+        if (!email) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        stateEl.hidden = true;
+
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+
+          if (res.status === 429) {
+            showState("Too many requests. Try again in an hour.", 'error');
+            btn.disabled = false;
+            btn.textContent = 'Send magic link';
+            return;
+          }
+
+          if (!res.ok) {
+            const txt = await res.text();
+            showState(txt || 'Could not send link. Try again.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Send magic link';
+            return;
+          }
+
+          showState(
+            "Check your inbox. The link expires in 15 minutes.",
+            'success'
+          );
+          // Replace the form so the user can't accidentally double-send.
+          form.style.display = 'none';
+        } catch (err) {
+          showState("Network error. Check your connection.", 'error');
+          btn.disabled = false;
+          btn.textContent = 'Send magic link';
+        }
+      });
+    </script>
+  </body>
+</html>

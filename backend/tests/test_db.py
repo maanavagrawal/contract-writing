@@ -1,78 +1,52 @@
 """
-Tests for the sqlite + migrations layer.
+Tests for the Postgres + migrations layer.
 
-Each test points the runner at a temp DB so we don't poison data/app.sqlite.
-We exercise: clean migrate, idempotent re-migrate, schema shape, seed
-correctness, and the repository read path.
+The conftest fixtures handle:
+  - postgres_container (session-scoped) — one container for all tests
+  - clean_db (function-scoped) — TRUNCATE before each test for isolation
+
+We exercise: clean migrate, idempotent re-migrate, schema shape, repository
+read/write paths, and the per-user privacy boundary that's now load-bearing
+(no shared defaults — every template belongs to exactly one user).
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pytest
-
-# Tests don't actually call OpenAI but extract.py loads at module import.
-os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 
 from backend import db, models
 
 
-@pytest.fixture
-def tmp_db(tmp_path: Path) -> Path:
-    """Fresh sqlite in a per-test temp dir."""
-    return tmp_path / "test.sqlite"
+def test_migrations_apply_cleanly(postgres_container, clean_db):
+    """Re-running migrations against an already-migrated DB should be a no-op
+    because every applied id is recorded in _migrations."""
+    applied = db.run_migrations()
+    # Already applied during the session fixture's setup.
+    assert applied == []
 
 
-def test_migrations_apply_cleanly(tmp_db: Path):
-    applied = db.run_migrations(tmp_db)
-    # 0001_initial + 0002_seed_default_templates expected.
-    assert "0001_initial" in applied
-    assert "0002_seed_default_templates" in applied
-    assert tmp_db.exists()
-
-
-def test_migrations_are_idempotent(tmp_db: Path):
-    db.run_migrations(tmp_db)
-    second = db.run_migrations(tmp_db)
-    # Second run should be a no-op.
+def test_migrations_are_idempotent(postgres_container, clean_db):
+    first = db.run_migrations()
+    second = db.run_migrations()
+    assert first == []
     assert second == []
 
 
-def test_schema_has_expected_tables(tmp_db: Path):
-    db.run_migrations(tmp_db)
-    with db.get_conn(tmp_db) as conn:
+def test_schema_has_expected_tables(postgres_container, clean_db):
+    with db.get_conn() as conn:
         rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
         ).fetchall()
-        names = {r[0] for r in rows}
-    # _migrations is internal bookkeeping; the rest are the Pillar 2 tables.
-    # generated_documents intentionally absent — completed PDFs aren't persisted
-    # for privacy; transactions only stores the field snapshot.
-    assert {"_migrations", "templates", "transactions"} <= names
-    assert "generated_documents" not in names
+    names = {r[0] for r in rows}
+    # _migrations is internal bookkeeping; templates + transactions are the
+    # original Pillar 2 tables; users + sessions are auth.
+    assert {"_migrations", "templates", "transactions", "users", "sessions"} <= names
 
 
-def test_seed_inserts_four_il_defaults(tmp_db: Path):
-    db.run_migrations(tmp_db)
-    with db.get_conn(tmp_db) as conn:
-        templates = models.list_templates(conn)
-    ids = {t.id for t in templates}
-    # The 4 mapping JSONs in backend/mappings/ all have matching PDFs in
-    # templates/pdf/, so all four should seed.
-    assert ids == {"lease_invoice", "lease_abstract", "tenant_rep", "multiboard"}
-    for t in templates:
-        assert t.is_default is True
-        assert t.status == "ready"
-        assert t.extra_fields == []
-        assert t.title  # non-empty
-
-
-def test_template_round_trip(tmp_db: Path):
-    """Insert a non-default custom template, read it back, verify shape."""
-    db.run_migrations(tmp_db)
+def test_template_round_trip(postgres_container, clean_db):
+    """Insert a custom template, read it back, verify shape including extras."""
     custom = models.Template(
         id=models.new_id(),
+        user_id="alice",
         title="Pet Addendum",
         source_pdf_path="templates/pdf/custom-pet.pdf",
         mapping_path="backend/mappings/custom-pet.json",
@@ -83,75 +57,108 @@ def test_template_round_trip(tmp_db: Path):
         ],
         created_at=models.now_iso(),
     )
-    with db.get_conn(tmp_db) as conn:
+    with db.get_conn() as conn:
         models.insert_template(conn, custom)
-        fetched = models.get_template(conn, custom.id)
+        fetched = models.get_template(conn, custom.id, user_id="alice")
     assert fetched is not None
     assert fetched.title == "Pet Addendum"
+    assert fetched.user_id == "alice"
     assert fetched.is_default is False
     assert len(fetched.extra_fields) == 1
     assert fetched.extra_fields[0].name == "pet_name"
 
 
-def test_default_template_cannot_be_deleted(tmp_db: Path):
-    """delete_template has a WHERE is_default = 0 guard. Default rows survive."""
-    db.run_migrations(tmp_db)
-    with db.get_conn(tmp_db) as conn:
-        models.delete_template(conn, "lease_invoice")
-        still_there = models.get_template(conn, "lease_invoice")
-    assert still_there is not None
-
-
-def test_transaction_round_trip(tmp_db: Path):
-    """Transactions log the TransactionFields + AgentProfile snapshot per deal.
-    Filled PDFs aren't persisted — privacy decision."""
-    db.run_migrations(tmp_db)
-    txn = models.Transaction(
+def test_get_template_returns_none_across_user_boundary(postgres_container, clean_db):
+    """The IDOR guard. Bob queries Alice's template id → None, NOT a 'forbidden'
+    signal. Returning None for both 'doesn't exist' and 'not yours' means an
+    attacker can't enumerate template ids."""
+    alice_tpl = models.Template(
         id=models.new_id(),
-        fields_json='{"property":{"address":"221 W Hubbard"}}',
-        agent_json='{"name":"Test Agent"}',
+        user_id="alice",
+        title="Alice's Pet Addendum",
+        source_pdf_path="custom-pet.pdf",
+        mapping_path="custom-pet.json",
+        status="ready",
         created_at=models.now_iso(),
     )
-    with db.get_conn(tmp_db) as conn:
-        models.insert_transaction(conn, txn)
-        fetched = models.get_transaction(conn, txn.id)
-        listed = models.list_transactions(conn)
-    assert fetched is not None
-    assert fetched.fields_json == txn.fields_json
-    assert fetched.user_id == models.DEFAULT_USER_ID
-    assert len(listed) == 1
+    with db.get_conn() as conn:
+        models.insert_template(conn, alice_tpl)
+        bob_view = models.get_template(conn, alice_tpl.id, user_id="bob")
+    assert bob_view is None
 
 
-def test_templates_scoped_per_user(tmp_db: Path):
-    """list_templates returns the requesting user's templates plus all defaults
-    (which are shared across users). Custom templates from other users stay
-    hidden."""
-    db.run_migrations(tmp_db)
+def test_list_templates_only_returns_caller_templates(postgres_container, clean_db):
+    """list_templates is the only place a missed user_id check would leak data
+    in bulk. Each user sees only their own templates — no shared rows."""
     alice_tpl = models.Template(
         id=models.new_id(), user_id="alice", title="Alice's Pet Addendum",
         source_pdf_path="custom-pet.pdf", mapping_path="custom-pet.json",
-        status="ready", is_default=False,
-        created_at=models.now_iso(),
+        status="ready", created_at=models.now_iso(),
     )
     bob_tpl = models.Template(
         id=models.new_id(), user_id="bob", title="Bob's Pool Disclosure",
         source_pdf_path="bob-pool.pdf", mapping_path="bob-pool.json",
-        status="ready", is_default=False,
-        created_at=models.now_iso(),
+        status="ready", created_at=models.now_iso(),
     )
-    with db.get_conn(tmp_db) as conn:
+    with db.get_conn() as conn:
         models.insert_template(conn, alice_tpl)
         models.insert_template(conn, bob_tpl)
         alice_view = models.list_templates(conn, user_id="alice")
         bob_view = models.list_templates(conn, user_id="bob")
 
-    alice_titles = {t.title for t in alice_view}
-    bob_titles = {t.title for t in bob_view}
-    # Both see the 4 IL defaults
-    assert "Compass Lease Invoice" in alice_titles
-    assert "Compass Lease Invoice" in bob_titles
-    # Each only sees their own custom
-    assert "Alice's Pet Addendum" in alice_titles
-    assert "Alice's Pet Addendum" not in bob_titles
-    assert "Bob's Pool Disclosure" in bob_titles
-    assert "Bob's Pool Disclosure" not in alice_titles
+    assert {t.title for t in alice_view} == {"Alice's Pet Addendum"}
+    assert {t.title for t in bob_view} == {"Bob's Pool Disclosure"}
+
+
+def test_delete_template_cannot_cross_user_boundary(postgres_container, clean_db):
+    """delete_template scoped to user_id; Bob's DELETE on Alice's template
+    affects zero rows."""
+    alice_tpl = models.Template(
+        id=models.new_id(), user_id="alice", title="t",
+        source_pdf_path="x.pdf", mapping_path="x.json",
+        status="ready", created_at=models.now_iso(),
+    )
+    with db.get_conn() as conn:
+        models.insert_template(conn, alice_tpl)
+        rowcount = models.delete_template(conn, alice_tpl.id, user_id="bob")
+        # Alice's template still there
+        still_there = models.get_template(conn, alice_tpl.id, user_id="alice")
+    assert rowcount == 0
+    assert still_there is not None
+
+
+def test_delete_template_owner_succeeds(postgres_container, clean_db):
+    alice_tpl = models.Template(
+        id=models.new_id(), user_id="alice", title="t",
+        source_pdf_path="x.pdf", mapping_path="x.json",
+        status="ready", created_at=models.now_iso(),
+    )
+    with db.get_conn() as conn:
+        models.insert_template(conn, alice_tpl)
+        rowcount = models.delete_template(conn, alice_tpl.id, user_id="alice")
+        gone = models.get_template(conn, alice_tpl.id, user_id="alice")
+    assert rowcount == 1
+    assert gone is None
+
+
+def test_transaction_round_trip(postgres_container, clean_db):
+    """Transactions log the TransactionFields + AgentProfile snapshot per deal.
+    Filled PDFs aren't persisted — privacy decision."""
+    txn = models.Transaction(
+        id=models.new_id(),
+        user_id="alice",
+        fields_json='{"property":{"address":"221 W Hubbard"}}',
+        agent_json='{"name":"Test Agent"}',
+        created_at=models.now_iso(),
+    )
+    with db.get_conn() as conn:
+        models.insert_transaction(conn, txn)
+        fetched = models.get_transaction(conn, txn.id, user_id="alice")
+        listed = models.list_transactions(conn, user_id="alice")
+        # Cross-user fetch → None
+        bob_view = models.get_transaction(conn, txn.id, user_id="bob")
+    assert fetched is not None
+    assert fetched.fields_json == txn.fields_json
+    assert fetched.user_id == "alice"
+    assert len(listed) == 1
+    assert bob_view is None

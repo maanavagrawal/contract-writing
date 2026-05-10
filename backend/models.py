@@ -1,31 +1,29 @@
 """
-Database row models + helpers (Pillar 2).
+Database row models + helpers (Pillar 2 / multi-tenant).
 
-Pydantic models that mirror the sqlite tables. Kept separate from
+Pydantic models that mirror the Postgres tables. Kept separate from
 backend/schema.py to make the boundary clear: schema.py is request/response
 shapes; models.py is persistence shapes. They overlap but don't have to —
 e.g. extra_fields is JSON-encoded text in the DB and a list of dicts in the
 ORM-style model.
 
-Everything here is dataclass-flavored: build from a sqlite3.Row, write back
-via repository functions in this module.
+Repository functions take a psycopg connection and a user_id. user_id is
+required everywhere — there is no "shared default" in multi-tenant mode.
+A query that forgets to pass user_id is the kind of bug that leaks user A's
+templates to user B; the type signature makes that mistake hard to make.
 """
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
+import psycopg
 from pydantic import BaseModel, Field
 
 TemplateStatus = Literal["pending_review", "ready", "needs_attention"]
 ExtraFieldType = Literal["text", "money", "date", "number", "bool", "list_str"]
-
-# Single-user default until auth ships. When auth lands, every place that
-# currently writes DEFAULT_USER swaps to the authenticated user's id.
-DEFAULT_USER_ID = "default"
 
 
 def new_id() -> str:
@@ -40,74 +38,86 @@ def now_iso() -> str:
 class ExtraField(BaseModel):
     """One template-specific field that extends the canonical schema for a
     particular template. Stored serialized as JSON in templates.extra_fields."""
-    name: str                        # snake_case identifier
+    name: str
     type: ExtraFieldType = "text"
-    description: str = ""             # used in extraction prompt
-    pdf_field: str = ""               # the AcroForm field name this fills
+    description: str = ""
+    pdf_field: str = ""
 
 
 class Template(BaseModel):
     id: str
-    user_id: str = DEFAULT_USER_ID
+    user_id: str
     title: str
     source_pdf_path: str
     mapping_path: str
     status: TemplateStatus
-    is_default: bool
+    is_default: bool = False
     extra_fields: list[ExtraField] = Field(default_factory=list)
     created_at: str
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "Template":
-        raw_extras = row["extra_fields"]
+    def from_row(cls, row: tuple) -> "Template":
+        # Column order matches the SELECT * from templates: id, user_id, title,
+        # source_pdf_path, mapping_path, status, is_default, extra_fields,
+        # created_at. Using positional access keeps this lightweight without
+        # paying for dict_row mapping on every read.
+        (id_, user_id, title, source_pdf_path, mapping_path,
+         status, is_default, extra_fields_raw, created_at) = row
         try:
-            extras = [ExtraField(**e) for e in json.loads(raw_extras or "[]")]
+            extras = [ExtraField(**e) for e in json.loads(extra_fields_raw or "[]")]
         except (json.JSONDecodeError, TypeError):
             extras = []
         return cls(
-            id=row["id"],
-            user_id=row["user_id"],
-            title=row["title"],
-            source_pdf_path=row["source_pdf_path"],
-            mapping_path=row["mapping_path"],
-            status=row["status"],
-            is_default=bool(row["is_default"]),
+            id=id_,
+            user_id=user_id,
+            title=title,
+            source_pdf_path=source_pdf_path,
+            mapping_path=mapping_path,
+            status=status,
+            is_default=bool(is_default),
             extra_fields=extras,
-            created_at=row["created_at"],
+            created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
         )
 
 
 class Transaction(BaseModel):
     id: str
-    user_id: str = DEFAULT_USER_ID
-    fields_json: str                  # serialized TransactionFields
-    agent_json: str                   # serialized AgentProfile
+    user_id: str
+    fields_json: str
+    agent_json: str
     created_at: str
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> "Transaction":
+    def from_row(cls, row: tuple) -> "Transaction":
+        id_, user_id, fields_json, agent_json, created_at = row
         return cls(
-            id=row["id"],
-            user_id=row["user_id"],
-            fields_json=row["fields_json"],
-            agent_json=row["agent_json"],
-            created_at=row["created_at"],
+            id=id_,
+            user_id=user_id,
+            fields_json=fields_json,
+            agent_json=agent_json,
+            created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
         )
 
 
-# ---- Repository functions (kept tiny; raw sqlite3 + dict-style row mapping) ----
+# ---- Repository functions ----
 #
-# user_id defaults to DEFAULT_USER_ID throughout. When auth ships, callers
-# pass a real authenticated user id and these queries become per-user scoped
-# without further changes.
+# Every read and write is scoped to a user_id. Defaults intentionally aren't
+# provided so a forgotten parameter raises TypeError instead of silently
+# leaking data across tenants.
 
-def list_templates(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> list[Template]:
-    """Return defaults first (is_default=1) then user's own templates by age."""
+_TEMPLATES_COLUMNS = (
+    "id, user_id, title, source_pdf_path, mapping_path, "
+    "status, is_default, extra_fields, created_at"
+)
+
+
+def list_templates(conn: psycopg.Connection, user_id: str) -> list[Template]:
+    """Return the user's own templates, oldest first."""
     rows = conn.execute(
-        """
-        SELECT * FROM templates
-        WHERE user_id = ? OR is_default = 1
-        ORDER BY is_default DESC, created_at ASC
+        f"""
+        SELECT {_TEMPLATES_COLUMNS} FROM templates
+        WHERE user_id = %s
+        ORDER BY created_at ASC
         """,
         (user_id,),
     ).fetchall()
@@ -115,77 +125,94 @@ def list_templates(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> 
 
 
 def get_template(
-    conn: sqlite3.Connection,
+    conn: psycopg.Connection,
     tpl_id: str,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: str,
 ) -> Template | None:
-    """Fetch a template by id, scoped to the caller's user_id (or defaults).
-    The OR is_default=1 clause lets every user see the seeded IL templates.
-    Today user_id is always DEFAULT_USER_ID; when auth ships, callers pass the
-    authenticated user and this turns into the per-user privilege boundary."""
+    """Fetch a template by id, scoped to the caller's user_id. Returns None
+    for templates the caller doesn't own — never 'exists but forbidden',
+    so attackers can't probe id-space to enumerate other users' template ids
+    (no IDOR signal)."""
     row = conn.execute(
-        "SELECT * FROM templates WHERE id = ? AND (user_id = ? OR is_default = 1)",
+        f"SELECT {_TEMPLATES_COLUMNS} FROM templates WHERE id = %s AND user_id = %s",
         (tpl_id, user_id),
     ).fetchone()
     return Template.from_row(row) if row else None
 
 
-def insert_template(conn: sqlite3.Connection, tpl: Template) -> None:
+def insert_template(conn: psycopg.Connection, tpl: Template) -> None:
     conn.execute(
         """
         INSERT INTO templates
             (id, user_id, title, source_pdf_path, mapping_path, status, is_default, extra_fields, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             tpl.id, tpl.user_id, tpl.title, tpl.source_pdf_path, tpl.mapping_path,
-            tpl.status, int(tpl.is_default),
+            tpl.status, tpl.is_default,
             json.dumps([e.model_dump() for e in tpl.extra_fields]),
             tpl.created_at,
         ),
     )
 
 
-def update_template_status(conn: sqlite3.Connection, tpl_id: str, status: TemplateStatus) -> None:
-    conn.execute("UPDATE templates SET status = ? WHERE id = ?", (status, tpl_id))
-
-
-def delete_template(
-    conn: sqlite3.Connection,
+def update_template_status(
+    conn: psycopg.Connection,
     tpl_id: str,
-    user_id: str = DEFAULT_USER_ID,
+    user_id: str,
+    status: TemplateStatus,
 ) -> None:
-    """Delete a template by id, scoped to the caller's user_id. Defaults are
-    protected by is_default=0 — defense-in-depth on top of the API-layer
-    is_default check. user_id scope means a user can only delete their own
-    rows; today everyone is DEFAULT_USER_ID, but the boundary is here for
-    when auth lands."""
     conn.execute(
-        "DELETE FROM templates WHERE id = ? AND user_id = ? AND is_default = 0",
-        (tpl_id, user_id),
+        "UPDATE templates SET status = %s WHERE id = %s AND user_id = %s",
+        (status, tpl_id, user_id),
     )
 
 
-def insert_transaction(conn: sqlite3.Connection, txn: Transaction) -> None:
+def delete_template(
+    conn: psycopg.Connection,
+    tpl_id: str,
+    user_id: str,
+) -> int:
+    """Delete a template by id, scoped to the caller's user_id. Returns the
+    number of rows affected so callers can distinguish 'not found / not yours'
+    from 'deleted'. No special handling for is_default — every template is
+    user-owned in multi-tenant mode."""
+    cur = conn.execute(
+        "DELETE FROM templates WHERE id = %s AND user_id = %s",
+        (tpl_id, user_id),
+    )
+    return cur.rowcount
+
+
+def insert_transaction(conn: psycopg.Connection, txn: Transaction) -> None:
     conn.execute(
         """
         INSERT INTO transactions (id, user_id, fields_json, agent_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
         """,
         (txn.id, txn.user_id, txn.fields_json, txn.agent_json, txn.created_at),
     )
 
 
-def get_transaction(conn: sqlite3.Connection, txn_id: str) -> Transaction | None:
-    row = conn.execute("SELECT * FROM transactions WHERE id = ?", (txn_id,)).fetchone()
+def get_transaction(
+    conn: psycopg.Connection,
+    txn_id: str,
+    user_id: str,
+) -> Transaction | None:
+    row = conn.execute(
+        "SELECT id, user_id, fields_json, agent_json, created_at "
+        "FROM transactions WHERE id = %s AND user_id = %s",
+        (txn_id, user_id),
+    ).fetchone()
     return Transaction.from_row(row) if row else None
 
 
-def list_transactions(conn: sqlite3.Connection, user_id: str = DEFAULT_USER_ID) -> list[Transaction]:
+def list_transactions(conn: psycopg.Connection, user_id: str) -> list[Transaction]:
     """Per-deal history for a user. Used to scan past deals by created_at;
     the actual filled PDFs aren't stored, only the TransactionFields snapshot."""
     rows = conn.execute(
-        "SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC",
+        "SELECT id, user_id, fields_json, agent_json, created_at "
+        "FROM transactions WHERE user_id = %s ORDER BY created_at DESC",
         (user_id,),
     ).fetchall()
     return [Transaction.from_row(r) for r in rows]
