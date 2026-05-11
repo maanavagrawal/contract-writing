@@ -399,3 +399,25 @@ def test_need_appearances_flag_set(lease_fields, agent):
     acroform = _deref(catalog["/AcroForm"])
     # pypdf wraps booleans in BooleanObject; equality check, not identity.
     assert bool(acroform.get("/NeedAppearances")) is True
+
+
+def test_sigflags_cleared_when_no_signatures_signed(sale_fields, agent):
+    """REGRESSION (2026-05-11 incident): the Multi-Board template ships with
+    /AcroForm/SigFlags = 1 (SignaturesExist) pre-set, even though its /Sig
+    fields are empty placeholders. With that bit set, Apple Preview and many
+    browsers refuse to regenerate appearance streams — so the filled PDF
+    shows blank /Tx values and unchecked /Btn widgets even though /V and /AS
+    are correctly written. fill_pdf must clear SignaturesExist when no /Sig
+    field has actually been signed."""
+    from backend.pdf_introspect import _deref
+
+    doc = fill_document("multiboard", sale_fields, agent)
+    reader = _read_filled(doc)
+    catalog = _deref(reader.trailer["/Root"])
+    acroform = _deref(catalog["/AcroForm"])
+    sig_flags = int(acroform.get("/SigFlags", 0) or 0)
+    # bit 1 = SignaturesExist; must be 0 since we never sign anything.
+    assert sig_flags & 1 == 0, (
+        f"SigFlags={sig_flags}: SignaturesExist bit still set, which blocks "
+        f"viewer appearance regeneration. Filled values will render blank."
+    )

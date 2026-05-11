@@ -17,14 +17,56 @@ import io
 from typing import Any
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import BooleanObject, IndirectObject, NameObject, TextStringObject
+from pypdf.generic import BooleanObject, IndirectObject, NameObject, NumberObject, TextStringObject
 
 from .pdf_introspect import _deref
 
 
+def _any_signature_is_signed(writer: PdfWriter) -> bool:
+    """Walk the AcroForm field tree; return True if any /Sig field has a /V
+    (i.e. a real signature is present). Empty /Sig placeholders don't count."""
+    catalog = writer._root_object
+    if "/AcroForm" not in catalog:
+        return False
+    acroform = catalog["/AcroForm"]
+    if hasattr(acroform, "get_object"):
+        acroform = acroform.get_object()
+    fields = acroform.get("/Fields")
+    if fields is None:
+        return False
+    if isinstance(fields, IndirectObject):
+        fields = _deref(fields)
+
+    def _walk(node: Any) -> bool:
+        obj = _deref(node)
+        ft = obj.get("/FT")
+        if ft is None:
+            parent = obj.get("/Parent")
+            if parent is not None:
+                ft = _deref(parent).get("/FT")
+        if str(ft) == "/Sig" and obj.get("/V") is not None:
+            return True
+        kids = obj.get("/Kids")
+        if kids is not None:
+            for k in _deref(kids):
+                if _walk(k):
+                    return True
+        return False
+
+    return any(_walk(f) for f in fields)
+
+
 def _set_appearances_flag(writer: PdfWriter) -> None:
     """Tell viewers to regenerate appearance streams. Without this, Preview and
-    some browsers show empty fields even when /V is set."""
+    some browsers show empty fields even when /V is set.
+
+    Some IL contract templates ship with AcroForm /SigFlags=1 (SignaturesExist)
+    pre-set even though no signature has actually been applied. With that bit
+    set, Apple Preview and several browsers refuse to regenerate appearance
+    streams (it would invalidate a non-existent signature), so all /Tx values
+    and checkbox /AS states show as blank — the exact symptom users report.
+    Clear the bit when no /Sig field is actually signed. Safe by definition:
+    there's nothing to invalidate."""
     catalog = writer._root_object
     if "/AcroForm" not in catalog:
         return
@@ -32,6 +74,10 @@ def _set_appearances_flag(writer: PdfWriter) -> None:
     if hasattr(acroform, "get_object"):
         acroform = acroform.get_object()
     acroform[NameObject("/NeedAppearances")] = BooleanObject(True)
+    if not _any_signature_is_signed(writer):
+        sig_flags = int(acroform.get("/SigFlags", 0) or 0)
+        if sig_flags & 1:
+            acroform[NameObject("/SigFlags")] = NumberObject(sig_flags & ~1)
 
 
 def _walk_and_fill(field_ref: Any, name_parts: list[str], rendered: dict[str, str]) -> None:
