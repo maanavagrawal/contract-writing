@@ -53,6 +53,7 @@ const els = {
   tabStrip: document.getElementById("tab-strip"),
   pagesScroll: document.getElementById("pages-scroll"),
   pagesLoading: document.getElementById("pages-loading"),
+  uncertainFields: document.getElementById("uncertain-fields"),
   // extract progress UI
   extractProgress: document.getElementById("extract-progress"),
   extractProgressTip: document.getElementById("extract-progress-tip"),
@@ -962,6 +963,54 @@ function clearPagesContainer() {
   });
 }
 
+function renderUncertainFields(doc) {
+  // Show a banner above the rendered PDF listing fields the AI wasn't
+  // sure about. Those fields are blank in the PDF — the user fills them
+  // in by hand. This is NOT a mapping-review UI (we promised not to
+  // build that); it's a "here's what we left for you" callout.
+  if (!els.uncertainFields) return;
+  const uncertain = (doc && doc.uncertain_fields) || [];
+  if (!uncertain.length) {
+    els.uncertainFields.hidden = true;
+    els.uncertainFields.innerHTML = "";
+    return;
+  }
+  els.uncertainFields.hidden = false;
+  const count = uncertain.length;
+  const heading = `We weren't sure about ${count} field${count === 1 ? "" : "s"}`;
+  // Pre-shape each row into a label + readable description. The "proposed"
+  // string is internal (canonical_path or extra_field_name) — show it as
+  // a hint, not the headline.
+  const rows = uncertain.map((u) => {
+    const label = u.pdf_field || "unnamed field";
+    const hint = u.kind === "canonical"
+      ? `Looked like: ${u.proposed.replace(/_/g, " ")}`
+      : `Looked like custom field: ${u.proposed.replace(/_/g, " ")}`;
+    return `
+      <li class="uncertain-row">
+        <span class="uncertain-label">${escapeHtml(label)}</span>
+        <span class="uncertain-hint">${escapeHtml(hint)}</span>
+      </li>
+    `;
+  }).join("");
+  els.uncertainFields.innerHTML = `
+    <div class="uncertain-header">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      </svg>
+      <strong>${escapeHtml(heading)}</strong>
+      <span class="hint">— left blank in the PDF, fill in by hand</span>
+    </div>
+    <ul class="uncertain-list">${rows}</ul>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[c]);
+}
+
 async function setActiveTab(docKey) {
   if (activeDocKey === docKey) return;
   activeDocKey = docKey;
@@ -972,6 +1021,10 @@ async function setActiveTab(docKey) {
 
   const doc = lastGenerated.find((d) => d.document === docKey);
   if (!doc) return;
+
+  // Surface uncertain fields BEFORE the pages render so the user sees it
+  // immediately when they switch tabs.
+  renderUncertainFields(doc);
 
   clearPagesContainer();
   // If we already have a built page list for this doc we render instantly;
@@ -1022,6 +1075,10 @@ function enterPreviewMode(docs) {
 
 function exitPreviewMode() {
   els.previewMode.hidden = true;
+  if (els.uncertainFields) {
+    els.uncertainFields.hidden = true;
+    els.uncertainFields.innerHTML = "";
+  }
   els.selectionMode.hidden = false;
 }
 

@@ -13,7 +13,9 @@ touch User B's templates or transactions.
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,7 +31,7 @@ from .db import get_conn, run_migrations
 from .extract import extract_fields
 from .generate import InvalidMapping, UnknownDocument, fill_document
 from .pdf_fill import fill_pdf
-from .pdf_render import render_pdf_for_edit
+from .pdf_render import collect_field_crops, render_pdf_for_edit
 from .schema import (
     EditRequest,
     EditResponse,
@@ -412,6 +414,61 @@ async def api_upload_template(
         raise HTTPException(400, "uploaded file is empty")
     _validate_pdf_bytes(pdf_bytes)
 
+    # Cache lookup: same user uploading the same PDF bytes hits a prior
+    # mapping and skips the 60-90s AI call. Cross-user hits don't apply —
+    # Alice's mapping is private to Alice (even though it would be byte-
+    # identical, persisting that link would be a privacy footgun).
+    #
+    # Title handling: if the user typed a different title than the cached
+    # row's, we UPDATE the cached row to the new title rather than silently
+    # dropping the user's input. The mapping itself is byte-identical so
+    # there's no semantic confusion — it's just "I want to call this 'Lease
+    # Pet Addendum' now instead of 'Pet Addendum'."
+    pdf_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    with get_conn() as conn:
+        cached = models.find_template_by_pdf_sha(conn, pdf_sha, user_id=user.id)
+    if cached is not None:
+        prior_mapping_path = Path(cached.mapping_path)
+        if not prior_mapping_path.is_absolute():
+            prior_mapping_path = ROOT / prior_mapping_path
+        try:
+            prior_mapping = json.loads(prior_mapping_path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            # Cache miss in practice — fall through to fresh mapping.
+            print(f"upload: cache hit but mapping file unreadable ({e}); refreshing")
+            cached = None
+        else:
+            # Update title on the cached row if the user provided a different
+            # one. Also update the mapping JSON's _meta.title so generated
+            # filenames + downloaded PDFs reflect the new label.
+            effective_title = cached.title
+            if title and title != cached.title:
+                with get_conn() as conn:
+                    models.update_template_title(conn, cached.id, user.id, title)
+                effective_title = title
+                # Mirror the title change into the mapping JSON's _meta block.
+                meta = prior_mapping.setdefault("_meta", {})
+                meta["title"] = title
+                try:
+                    prior_mapping_path.write_text(json.dumps(prior_mapping, indent=2))
+                except OSError as e:
+                    # Non-fatal — DB row title is authoritative; mapping file
+                    # title is cosmetic for filenames. Log and continue.
+                    print(f"upload: could not rewrite mapping title ({e})")
+
+            return TemplateUploadResponse(
+                id=cached.id,
+                title=effective_title,
+                status=cached.status,
+                mapping=prior_mapping,
+                extra_fields=[
+                    ExtraFieldDTO(name=e.name, type=e.type,
+                                  description=e.description, pdf_field=e.pdf_field)
+                    for e in cached.extra_fields
+                ],
+                field_count=len(prior_mapping.get("fields", {})),
+            )
+
     try:
         reader = templates_mod.validate_pdf(pdf_bytes)
     except templates_mod.TemplateUploadError as e:
@@ -424,8 +481,14 @@ async def api_upload_template(
     template_id = models.new_id()
     pdf_path = templates_mod.save_uploaded_pdf(pdf_bytes, template_id)
 
+    # Visual crops for fields with no neighbor text — the AI gets a tiny
+    # PNG of the area around the field as an extra signal. Without this,
+    # 22% of Multi-Board fields are unmappable (no text within the
+    # neighbor-radius). See backend/pdf_render.collect_field_crops.
+    crops = collect_field_crops(reader, field_descs)
+
     try:
-        proposal = await templates_mod.propose_mapping(field_descs)
+        proposal = await templates_mod.propose_mapping(field_descs, crops=crops)
     except templates_mod.AIMappingError as e:
         try:
             pdf_path.unlink()
@@ -433,12 +496,21 @@ async def api_upload_template(
             pass
         raise HTTPException(502, f"AI mapping failed: {e}")
 
-    mapping_file, extras, _unknown_paths = templates_mod.proposal_to_mapping_file(
+    mapping_file, extras, unknown_paths, low_confidence = templates_mod.proposal_to_mapping_file(
         proposal,
         title=title,
         source_pdf_filename=f"{template_id}.pdf",
         filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
     )
+
+    # Structural validation: catch the worst mapping failures before they
+    # reach a paying customer. Auto-flag needs_attention when too many
+    # fields are unmapped or hallucinated.
+    validation_warnings = templates_mod.validate_mapping_structure(
+        mapping_file, field_descs, unknown_paths, low_confidence,
+    )
+    initial_status = "needs_attention" if validation_warnings else "ready"
+
     mapping_path = templates_mod.write_mapping_file(mapping_file, template_id)
 
     template_row = templates_mod.build_template_row(
@@ -448,6 +520,8 @@ async def api_upload_template(
         mapping_path=mapping_path,
         extras=extras,
         user_id=user.id,
+        pdf_sha256=pdf_sha,
+        status=initial_status,
     )
     with get_conn() as conn:
         models.insert_template(conn, template_row)

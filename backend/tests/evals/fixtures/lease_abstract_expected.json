@@ -1,0 +1,19 @@
+{
+  "Todays Date": "today",
+  "Agent": "agent.name",
+  "Lease Sign Date": "today",
+  "Lease Start Date": "lease_start",
+  "Rental Amount": "monthly_rent",
+  "Agent Signature": null,
+  "Property Address": "property.address",
+  "Agent Signed Date": "today",
+  "Unit No": "property.unit",
+  "Sales Managers Signature": null,
+  "Commission to Compass": "commission_amount",
+  "Lease End Date.0.0": "lease_end",
+  "City": "property.city",
+  "State": "property.state",
+  "Sales Manager Signed Date": null,
+  "Text1": "net_monthly_rent",
+  "Text2": "concessions"
+}

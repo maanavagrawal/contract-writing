@@ -54,15 +54,17 @@ class Template(BaseModel):
     is_default: bool = False
     extra_fields: list[ExtraField] = Field(default_factory=list)
     created_at: str
+    # SHA-256 of the uploaded PDF bytes. Cache key for the AI mapping: if a
+    # user re-uploads the same PDF we copy the existing mapping; if they
+    # upload a revision (v8.0 -> v8.1) the hash differs and we re-map.
+    # Nullable for rows inserted before migration 0004.
+    pdf_sha256: str | None = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Template":
-        # Column order matches the SELECT * from templates: id, user_id, title,
-        # source_pdf_path, mapping_path, status, is_default, extra_fields,
-        # created_at. Using positional access keeps this lightweight without
-        # paying for dict_row mapping on every read.
+        # Column order matches the SELECT in _TEMPLATES_COLUMNS below.
         (id_, user_id, title, source_pdf_path, mapping_path,
-         status, is_default, extra_fields_raw, created_at) = row
+         status, is_default, extra_fields_raw, created_at, pdf_sha256) = row
         try:
             extras = [ExtraField(**e) for e in json.loads(extra_fields_raw or "[]")]
         except (json.JSONDecodeError, TypeError):
@@ -77,6 +79,7 @@ class Template(BaseModel):
             is_default=bool(is_default),
             extra_fields=extras,
             created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
+            pdf_sha256=pdf_sha256,
         )
 
 
@@ -107,7 +110,7 @@ class Transaction(BaseModel):
 
 _TEMPLATES_COLUMNS = (
     "id, user_id, title, source_pdf_path, mapping_path, "
-    "status, is_default, extra_fields, created_at"
+    "status, is_default, extra_fields, created_at, pdf_sha256"
 )
 
 
@@ -144,16 +147,61 @@ def insert_template(conn: psycopg.Connection, tpl: Template) -> None:
     conn.execute(
         """
         INSERT INTO templates
-            (id, user_id, title, source_pdf_path, mapping_path, status, is_default, extra_fields, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (id, user_id, title, source_pdf_path, mapping_path, status,
+             is_default, extra_fields, created_at, pdf_sha256)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             tpl.id, tpl.user_id, tpl.title, tpl.source_pdf_path, tpl.mapping_path,
             tpl.status, tpl.is_default,
             json.dumps([e.model_dump() for e in tpl.extra_fields]),
             tpl.created_at,
+            tpl.pdf_sha256,
         ),
     )
+
+
+def find_template_by_pdf_sha(
+    conn: psycopg.Connection,
+    pdf_sha256: str,
+    user_id: str,
+) -> Template | None:
+    """Look up an existing template by PDF hash, scoped to the caller. Used
+    at upload time to skip the AI mapping call when the same user uploads
+    the same PDF bytes twice. Cross-user matches are not used — Alice's
+    cached mapping is private to Alice.
+
+    Note: deliberately does NOT filter by status. Even templates flagged
+    `needs_attention` have a usable mapping (the AI generated something);
+    the flag just means the user might want to review it. Skipping the
+    AI call on re-upload is the right behavior regardless of flag state —
+    we'd just re-generate the same mapping (and the same flag) for $$$.
+    """
+    row = conn.execute(
+        f"""
+        SELECT {_TEMPLATES_COLUMNS} FROM templates
+        WHERE pdf_sha256 = %s AND user_id = %s
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        (pdf_sha256, user_id),
+    ).fetchone()
+    return Template.from_row(row) if row else None
+
+
+def update_template_title(
+    conn: psycopg.Connection,
+    tpl_id: str,
+    user_id: str,
+    title: str,
+) -> int:
+    """Update the title on a template the caller owns. Returns the number of
+    rows affected so callers can detect "not yours / not found" without
+    leaking that distinction to the API."""
+    cur = conn.execute(
+        "UPDATE templates SET title = %s WHERE id = %s AND user_id = %s",
+        (title, tpl_id, user_id),
+    )
+    return cur.rowcount
 
 
 def update_template_status(

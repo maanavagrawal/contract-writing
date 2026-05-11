@@ -1,0 +1,44 @@
+[
+  {
+    "pdf_field": "LEASE INVOICE",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: LEASE INVOICE #",
+    "page": 1
+  },
+  {
+    "pdf_field": "LEASE DATE",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: LEASE DATE: | ABOVE: LEASE INVOICE #",
+    "page": 1
+  },
+  {
+    "pdf_field": "COMMENCEMENT DATE",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: LEASE DATE: COMMENCEMENT DATE: | ABOVE: LEASE INVOICE #",
+    "page": 1
+  },
+  {
+    "pdf_field": "PROPERTY ADDRESS",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: COMMENCEMENT DATE: PROPERTY ADDRESS:",
+    "page": 1
+  },
+  {
+    "pdf_field": "TENANTS NAME",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: PROPERTY ADDRESS: TENANT\u2019S NAME:",
+    "page": 1
+  },
+  {
+    "pdf_field": "AMOUNT DUE COMPASS",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: TENANT\u2019S NAME: AMOUNT DUE COMPASS:",
+    "page": 1
+  },
+  {
+    "pdf_field": "COMPASS AGENT",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: per Tenant Representation Agreement COMPASS AGENT:",
+    "page": 1
+  }
+]

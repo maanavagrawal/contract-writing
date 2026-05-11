@@ -24,7 +24,7 @@ from pypdf import PdfReader
 
 from .interpolate import build_context, interpolate
 from .pdf_fill import fill_pdf
-from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields
+from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields, UncertainField
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -102,8 +102,26 @@ def fill_document(
     reader = PdfReader(str(source_pdf))
     pdf_bytes = fill_pdf(reader, rendered)
 
+    # Surface low-confidence fields to the frontend so the user can see
+    # what we left blank and decide whether to fill it by hand. The mapping
+    # already blanked them via proposal_to_mapping_file at upload time.
+    uncertain: list[UncertainField] = []
+    for lc in mapping.low_confidence or []:
+        try:
+            uncertain.append(UncertainField(
+                pdf_field=lc["pdf_field"],
+                proposed=lc["proposed"],
+                confidence=int(lc["confidence"]),
+                kind=lc["kind"],
+            ))
+        except (KeyError, TypeError, ValueError):
+            # Malformed entry from a hand-edited mapping JSON; skip silently
+            # rather than 500 the whole generate call.
+            continue
+
     return GeneratedDoc(
         document=document_key,
         filename=mapping.meta.filled_filename or f"{document_key}_filled.pdf",
         base64=base64.b64encode(pdf_bytes).decode("ascii"),
+        uncertain_fields=uncertain,
     )

@@ -311,6 +311,11 @@
             </div>
           </div>
           <div class="tab-strip" id="tab-strip" role="tablist"></div>
+          <!-- Uncertain-fields banner: appears above the rendered PDF when
+               the AI mapping marked one or more fields as low-confidence.
+               Those fields render blank (better than wrong); user fills
+               them by hand. Populated per-active-tab in app.js. -->
+          <div class="uncertain-fields" id="uncertain-fields" hidden></div>
           <div class="pages-scroll" id="pages-scroll">
             <div class="pages-loading" id="pages-loading" hidden>
               <span class="btn-spinner"></span>

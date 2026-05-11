@@ -1,0 +1,9 @@
+{
+  "LEASE INVOICE": null,
+  "LEASE DATE": "today",
+  "COMMENCEMENT DATE": "lease_start",
+  "PROPERTY ADDRESS": "property.address_full",
+  "TENANTS NAME": "tenant_or_buyer_names",
+  "AMOUNT DUE COMPASS": "commission_amount",
+  "COMPASS AGENT": "agent.name"
+}

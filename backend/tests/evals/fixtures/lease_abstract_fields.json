@@ -1,0 +1,104 @@
+[
+  {
+    "pdf_field": "Todays Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Today\u2019s Date: | ABOVE: Lease Abstract | RIGHT: Agent :",
+    "page": 1
+  },
+  {
+    "pdf_field": "Agent",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Agent :",
+    "page": 1
+  },
+  {
+    "pdf_field": "Lease Sign Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Unit No.: Lease Sign Date: | RIGHT: :",
+    "page": 1
+  },
+  {
+    "pdf_field": "Lease Start Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Lease Sign Date: Lease Star t Date: | ABOVE: City : | RIGHT: Lease End Date:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Rental Amount",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Lease Star M arket M onthly Rent: t Date: | RIGHT: Lease End Date: Net Monthly Rent:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Agent Signature",
+    "field_type": "/Sig",
+    "neighbor_text": "LEFT: Agent Signature: | ABOVE: Concessions: | RIGHT: Date:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Property Address",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Today\u2019s Date: Property Address: | ABOVE: Lease Abstract",
+    "page": 1
+  },
+  {
+    "pdf_field": "Agent Signed Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Date:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Unit No",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Property Address: Unit No.: | ABOVE: Agent : | RIGHT: City : :",
+    "page": 1
+  },
+  {
+    "pdf_field": "Sales Managers Signature",
+    "field_type": "/Sig",
+    "neighbor_text": "LEFT: Agent Signature: Sales Manager Signature | RIGHT: Date:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Commission to Compass",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: M arket M onthly Rent: Commission to Compass: | ABOVE: Lease End Date: | RIGHT: Net Monthly Rent: Concessions:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Lease End Date.0.0",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Lease End Date: | ABOVE: :",
+    "page": 1
+  },
+  {
+    "pdf_field": "City",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: City : | ABOVE: Agent : | RIGHT: :",
+    "page": 1
+  },
+  {
+    "pdf_field": "State",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: City : :",
+    "page": 1
+  },
+  {
+    "pdf_field": "Sales Manager Signed Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Date:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Text1",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Lease End Date: Net Monthly Rent:",
+    "page": 1
+  },
+  {
+    "pdf_field": "Text2",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Net Monthly Rent: Concessions:",
+    "page": 1
+  }
+]

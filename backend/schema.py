@@ -162,11 +162,27 @@ class GenerateRequest(BaseModel):
     )
 
 
+class UncertainField(BaseModel):
+    """One field that the AI mapped but with confidence below the gating
+    threshold (see backend/templates.LOW_CONFIDENCE_THRESHOLD). These render
+    BLANK in the PDF (better than wrong) and are surfaced to the user so
+    they can fill them by hand. The shape mirrors mapping.low_confidence
+    entries written at upload time."""
+    pdf_field: str
+    proposed: str               # canonical path or extra_field name the AI tried
+    confidence: int             # 1-10
+    kind: str                   # "canonical" | "extra"
+
+
 class GeneratedDoc(BaseModel):
     document: str
     filename: str
     base64: str
     content_type: str = "application/pdf"
+    # Fields the template's mapping marked low-confidence at upload time —
+    # rendered blank in this filled PDF. Frontend surfaces them as
+    # "we weren't sure, please fill these in" after generate.
+    uncertain_fields: list[UncertainField] = Field(default_factory=list)
 
 
 class GeneratedDocFailure(BaseModel):
@@ -198,10 +214,16 @@ class MappingFile(BaseModel):
 
     `meta` is read from the JSON's "_meta" key; the `alias` lets us keep the
     file format unchanged while exposing a Python-friendly attribute name.
+
+    `low_confidence` is the post-upload list of fields the AI mapped with
+    confidence < threshold. Those fields render BLANK in generated PDFs and
+    the frontend surfaces them as "we weren't sure, fill these in by hand."
+    Per-field shape: {pdf_field, proposed, confidence, kind}.
     """
     meta: MappingMeta = Field(alias="_meta")
     fields: dict[str, str]
     extra_fields: list[dict] = Field(default_factory=list)
+    low_confidence: list[dict] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 

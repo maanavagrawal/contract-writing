@@ -22,6 +22,18 @@ dependencies = [
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "testcontainers[postgres]>=4.8",
     "httpx>=0.27",
 ]
+
+[tool.pytest.ini_options]
+# Don't run the eval suite by default — those tests hit the real OpenAI
+# API and are slow + costly. Run them explicitly with:
+#   pytest -m evals backend/tests/evals/
+markers = [
+    "evals: real-API mapping accuracy evals (slow, costs money, opt-in)",
+    "slow: tests that take more than ~5s",
+]
+addopts = "-m 'not evals'"
+asyncio_mode = "auto"

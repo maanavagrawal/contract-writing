@@ -1,0 +1,2336 @@
+[
+  {
+    "pdf_field": "1",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 1.  THE PARTIES: Buyer Name(s) [PLEASE PRINT] Buyer and Seller are hereinafter referred to as the \u201cParties.\u201d",
+    "page": 1
+  },
+  {
+    "pdf_field": "2",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Name(s) Seller Name(s) [PLEASE PRINT] [PLEASE PRINT] | ABOVE: Buyer and Seller are hereinafter referred to as the \u201cParties.\u201d",
+    "page": 1
+  },
+  {
+    "pdf_field": "3",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: If Dual Agency applies, check here \uf071 | RIGHT: and complete Optional Paragraph 30.",
+    "page": 1
+  },
+  {
+    "pdf_field": "30",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: be tendered by  , 20  . Earnest Money shall be held in trust for the mutual benefit of Business Days after Date of Acceptance. Additional Earnest Money, if any, of $  shall",
+    "page": 1
+  },
+  {
+    "pdf_field": "Address",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: included therein. Seller agrees to convey to Buyer or to Buyer\u2019s designated grantee the Real Estate with approximate",
+    "page": 1
+  },
+  {
+    "pdf_field": "4",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: included therein. Seller agrees to convey to Buyer or to Buyer\u2019s designated grantee the Real Estate with approximate lot size or acreage of   commonly known as: | ABOVE: Real Estate is defined as the property, all improvements, the fixtures and Personal Property",
+    "page": 1
+  },
+  {
+    "pdf_field": "6",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address Unit # Permanent Index Number(s):",
+    "page": 1
+  },
+  {
+    "pdf_field": "7",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Single Family Attached | ABOVE: Address Unit # Permanent Index Number(s): | RIGHT: \uf071 Single Family Detached \uf071",
+    "page": 1
+  },
+  {
+    "pdf_field": "8",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Single Family Attached \uf071 Single Family Detached | ABOVE: [IF APPLICABLE] City State Zip C ounty | RIGHT: \uf071 Mul ti-Unit",
+    "page": 1
+  },
+  {
+    "pdf_field": "9",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Single Family Detached \uf071 Mul ti-Unit",
+    "page": 1
+  },
+  {
+    "pdf_field": "10",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 Single Family Attached \uf071 # of space(s) ; identified as space(s) # ; location Single Family Detached | RIGHT: \uf071 Mul ti-Unit",
+    "page": 1
+  },
+  {
+    "pdf_field": "11",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: # of space(s) ; identified as space(s) # ; location Single Family Detached \uf071",
+    "page": 1
+  },
+  {
+    "pdf_field": "12",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 Mul ti-Unit",
+    "page": 1
+  },
+  {
+    "pdf_field": "13",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: If Designated Parking is Included: [CHECK TYPE] \uf071 | ABOVE: \uf071 Single Family Attached \uf071 | RIGHT: deeded space, PIN: # of space(s) ; identified as space(s) # ; location \uf071 limited common element",
+    "page": 1
+  },
+  {
+    "pdf_field": "14",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: If Designated Parking is Included: [CHECK TYPE] \uf071 deeded space, PIN: # of space(s) ; identified as space(s) # ; location | ABOVE: Single Family Detached \uf071 | RIGHT: \uf071 limited common element \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "15",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: # of space(s) ; identified as space(s) # ; location \uf071 limited common element | ABOVE: \uf071 | RIGHT: \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "16",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 limited common element \uf071 | ABOVE: Mul ti-Unit | RIGHT: assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "17",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 deeded space, PIN: # of space(s) ; identified as space(s) # ; location | RIGHT: \uf071 limited common element \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "18",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: # of space(s) ; identified as space(s) # ; location \uf071 limited common element | RIGHT: \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "19",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 limited common element \uf071",
+    "page": 1
+  },
+  {
+    "pdf_field": "20",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: If Designated Storage is Included: [CHECK TYPE] \uf071 | ABOVE: \uf071 deeded space, PIN: | RIGHT: deeded space, PIN: # of space(s) ; identified as space(s) # ; location \uf071 limited common element",
+    "page": 1
+  },
+  {
+    "pdf_field": "21",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: If Designated Storage is Included: [CHECK TYPE] \uf071 deeded space, PIN: # of space(s) ; identified as space(s) # ; location | ABOVE: \uf071 limited common element | RIGHT: \uf071 limited common element \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "22",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: # of space(s) ; identified as space(s) # ; location \uf071 limited common element | ABOVE: \uf071 limited common element | RIGHT: \uf071 assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "23",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 limited common element \uf071 | ABOVE: \uf071 assigned space. | RIGHT: assigned space.",
+    "page": 1
+  },
+  {
+    "pdf_field": "24",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: The Purchase Price is $  . After the payment of Earnest | ABOVE: \uf071 limited common element \uf071",
+    "page": 1
+  },
+  {
+    "pdf_field": "25",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: or lender\u2019s closing disclosure, and if not, such lesser amount as the lender permits $  to Buyer at Closing to be applied to prepaid expenses, closing costs or both. | ABOVE: a) CREDIT AT CLOSING: Provided Buyer\u2019s lender permits such credit to show on the final settlement statement",
+    "page": 1
+  },
+  {
+    "pdf_field": "26",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: $  to Buyer at Closing to be applied to prepaid expenses, closing costs or both. b) EARNEST MONEY: Earnest Money of $   shall be tendered to Escrowee on or before",
+    "page": 1
+  },
+  {
+    "pdf_field": "27",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: $  to Buyer at Closing to be applied to prepaid expenses, closing costs or both. | RIGHT: Earnest Money of $   shall be tendered to Escrowee on or before",
+    "page": 1
+  },
+  {
+    "pdf_field": "28",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1
+  },
+  {
+    "pdf_field": "29",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: be tendered by  , 20  . Earnest Money shall be held in trust for the mutual benefit of Business Days after Date of Acceptance. Additional Earnest Money, if any, of $  shall | ABOVE: Earnest Money of $   shall be tendered to Escrowee on or before",
+    "page": 1
+  },
+  {
+    "pdf_field": "31",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: : \uf071 Seller\u2019s Brokerage; \uf071 | RIGHT: Buyer\u2019s Brokerage; \uf071 As otherwise agreed by the Parties,",
+    "page": 1
+  },
+  {
+    "pdf_field": "32",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: If Home Warranty applies, check here \uf071 | ABOVE: The B alance Due at Closing shall be the Purchase Price, plus or minus | RIGHT: and complete Optional Paragraph 33.",
+    "page": 1
+  },
+  {
+    "pdf_field": "33",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] SUBPARAGRAPHS a OR b] ____ ____ ____ ____ a) | ABOVE: 4.  SELLER CONTRIBUTION TO BUYER BROKERAGE COMPENSATION: | RIGHT: Seller agrees to pay to Buyer\u2019s Brokerage",
+    "page": 1
+  },
+  {
+    "pdf_field": "34",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] SUBPARAGRAPHS a OR b] ____ ____ ____ ____ a) | RIGHT: Seller agrees to pay to Buyer\u2019s Brokerage [CHOOSE ONLY ONE]:",
+    "page": 1
+  },
+  {
+    "pdf_field": "35",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] SUBPARAGRAPHS a OR b] ____ ____ ____ ____ a) | RIGHT: Seller agrees to pay to Buyer\u2019s Brokerage [CHOOSE ONLY ONE]:",
+    "page": 1
+  },
+  {
+    "pdf_field": "36",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] SUBPARAGRAPHS a OR b] ____ ____ ____ ____ a) | RIGHT: Seller agrees to pay to Buyer\u2019s Brokerage [CHOOSE ONLY ONE]:",
+    "page": 1
+  },
+  {
+    "pdf_field": "37",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHOOSE ONLY ONE]: \uf071 % of",
+    "page": 1
+  },
+  {
+    "pdf_field": "38",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [CHOOSE ONLY ONE]: \uf071 % of",
+    "page": 1
+  },
+  {
+    "pdf_field": "39",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] Purchase Price; or ____ ____ ____ ____ a) \uf071 $   on Buyer\u2019s behalf to be applied to Buyer\u2019s Brokerage compensation. | RIGHT: [CHOOSE ONLY ONE]: \uf071 % of",
+    "page": 1
+  },
+  {
+    "pdf_field": "40",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Purchase Price; or [INITIALS] ____ ____ ____ ____ b)  Seller will not pay Buyer\u2019s Brokerage compensation. \uf071 $   on Buyer\u2019s behalf to be applied to Buyer\u2019s Brokerage compensation. | ABOVE: [INITIALS] ____ ____ ____ ____ a)",
+    "page": 1
+  },
+  {
+    "pdf_field": "41",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Purchase Price; or [INITIALS] ____ ____ ____ ____ b)  Seller will not pay Buyer\u2019s Brokerage compensation. \uf071 $   on Buyer\u2019s behalf to be applied to Buyer\u2019s Brokerage compensation. | ABOVE: ____ ____ ____ ____ a)",
+    "page": 1
+  },
+  {
+    "pdf_field": "42",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Purchase Price; or [INITIALS] ____ ____ ____ ____ b)  Seller will not pay Buyer\u2019s Brokerage compensation. \uf071 $   on Buyer\u2019s behalf to be applied to Buyer\u2019s Brokerage compensation. | ABOVE: ____ ____ ____ ____ a) Seller agrees to pay to Buyer\u2019s Brokerage",
+    "page": 1
+  },
+  {
+    "pdf_field": "43",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Purchase Price; or [INITIALS] ____ ____ ____ ____ b)  Seller will not pay Buyer\u2019s Brokerage compensation. \uf071 $   on Buyer\u2019s behalf to be applied to Buyer\u2019s Brokerage compensation. | ABOVE: Seller agrees to pay to Buyer\u2019s Brokerage",
+    "page": 1
+  },
+  {
+    "pdf_field": "44",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 5.  CLOSING: Closing shall be on  , 20  or at such time as mutually agreed by the",
+    "page": 1
+  },
+  {
+    "pdf_field": "45",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1
+  },
+  {
+    "pdf_field": "46",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial | ABOVE: 7.  FIXTURES AND PERSONAL PROPERTY AT NO ADDED VALUE: are owned by Seller and to Seller\u2019s knowledge are in operating condition on Date of Acceptance, unless otherwise",
+    "page": 1
+  },
+  {
+    "pdf_field": "47",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial",
+    "page": 1
+  },
+  {
+    "pdf_field": "48",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1
+  },
+  {
+    "pdf_field": "49",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1
+  },
+  {
+    "pdf_field": "50",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: together with the following items as they exist at time of presentation of offer at no added value by Bill of Sale at | RIGHT: [CHECK OR ENUMERATE APPLICABLE ITEMS] :",
+    "page": 2
+  },
+  {
+    "pdf_field": "51",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: together with the following items as they exist at time of presentation of offer at no added value by Bill of Sale at Closing [CHECK OR ENUMERATE APPLICABLE ITEMS]",
+    "page": 2
+  },
+  {
+    "pdf_field": "53",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: r(s)   Electronic / Media Air Filter(s)  All Window Treatments & Hardware  Above Ground Pool Wine/Beverage Refrigerator  Sump Pump(s)  Built-in / At tached Shelving  Pool Equipment",
+    "page": 2
+  },
+  {
+    "pdf_field": "54",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Wine/Beverage Refrigerator  Sump Pump(s)  Built-in / At tached Shelving  Pool Equipment Freezer(s)  Sump Pump Battery Bac kup  Wall Mounted Brackets (AV/TV)  Sprinkler System",
+    "page": 2
+  },
+  {
+    "pdf_field": "55",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Freezer(s)  Sump Pump Battery Bac kup  Wall Mounted Brackets (AV/TV)  Sprinkler System Oven / Range / Stove  Reverse Osmosis S ystem  including hardware  Invisible Fence, Collar",
+    "page": 2
+  },
+  {
+    "pdf_field": "56",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Oven / Range / Stove  Reverse Osmosis S ystem  including hardware  Invisible Fence, Collar Dishwasher  Backup Generator Sy stem  Ceiling Fan(s)   & Remote",
+    "page": 2
+  },
+  {
+    "pdf_field": "57",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Dishwasher  Backup Generator Sy stem  Ceiling Fan(s)   & Remote Trash Compactor  Water Softener (unles s rented)  All Tacked Down Carpeting  Interior Security System",
+    "page": 2
+  },
+  {
+    "pdf_field": "58",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: or  Water Softener (unles s rented)  All Tacked Down Carpeting  Interior Security System Microwave  Propane Tank(s) (u nless rented)  Storms and Screens  Satellite Dish & Equipment",
+    "page": 2
+  },
+  {
+    "pdf_field": "59",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: icrowave  Propane Tank(s) (u nless rented)  Storms and Screens  Satellite Dish & Equipment Garbage Disposal  Smoke Detectors   Firepl ace Screens / Doors / Grates  Smart Thermostat",
+    "page": 2
+  },
+  {
+    "pdf_field": "60",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Garbage Disposal  Smoke Detectors   Firepl ace Screens / Doors / Grates  Smart Thermostat Washer(s)   Carbon Monoxide Detector s  Fireplace Gas Log(s)  Video Doorbell",
+    "page": 2
+  },
+  {
+    "pdf_field": "61",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Washer(s)   Carbon Monoxide Detector s  Fireplace Gas Log(s)  Video Doorbell Dryer(s)  Garage Door Opener(s)  with   Outdoor Shed  Surround Sound System",
+    "page": 2
+  },
+  {
+    "pdf_field": "62",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Dryer(s)  Garage Door Opener(s)  with   Outdoor Shed  Surround Sound System Water Heater  All Transmitters  Outd oor Playset(s)  Home Theater / Projector",
+    "page": 2
+  },
+  {
+    "pdf_field": "63",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Water Heater  All Transmitters  Outd oor Playset(s)  Home Theater / Projector Central Air Conditioning  Intercom System  Plan ted Vegetation   Surveillance System(s)",
+    "page": 2
+  },
+  {
+    "pdf_field": "64",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Closing Refrigerator(s)   Electronic / Media Air Filter(s)  All Window Treatments & Hardware  Above Ground Pool [CHECK OR ENUMERATE APPLICABLE ITEMS] | RIGHT: :",
+    "page": 2
+  },
+  {
+    "pdf_field": "65",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: r(s)   Electronic / Media Air Filter(s)  All Window Treatments & Hardware  Above Ground Pool Wine/Beverage Refrigerator  Sump Pump(s)  Built-in / At tached Shelving  Pool Equipment",
+    "page": 2
+  },
+  {
+    "pdf_field": "66",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Wine/Beverage Refrigerator  Sump Pump(s)  Built-in / At tached Shelving  Pool Equipment Freezer(s)  Sump Pump Battery Bac kup  Wall Mounted Brackets (AV/TV)  Sprinkler System",
+    "page": 2
+  },
+  {
+    "pdf_field": "67",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Freezer(s)  Sump Pump Battery Bac kup  Wall Mounted Brackets (AV/TV)  Sprinkler System Oven / Range / Stove  Reverse Osmosis S ystem  including hardware  Invisible Fence, Collar",
+    "page": 2
+  },
+  {
+    "pdf_field": "68",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Oven / Range / Stove  Reverse Osmosis S ystem  including hardware  Invisible Fence, Collar Dishwasher  Backup Generator Sy stem  Ceiling Fan(s)   & Remote",
+    "page": 2
+  },
+  {
+    "pdf_field": "69",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Dishwasher  Backup Generator Sy stem  Ceiling Fan(s)   & Remote Trash Compactor  Water Softener (unles s rented)  All Tacked Down Carpeting  Interior Security System",
+    "page": 2
+  },
+  {
+    "pdf_field": "70",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: or  Water Softener (unles s rented)  All Tacked Down Carpeting  Interior Security System Microwave  Propane Tank(s) (u nless rented)  Storms and Screens  Satellite Dish & Equipment",
+    "page": 2
+  },
+  {
+    "pdf_field": "71",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: icrowave  Propane Tank(s) (u nless rented)  Storms and Screens  Satellite Dish & Equipment Garbage Disposal  Smoke Detectors   Firepl ace Screens / Doors / Grates  Smart Thermostat",
+    "page": 2
+  },
+  {
+    "pdf_field": "72",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Garbage Disposal  Smoke Detectors   Firepl ace Screens / Doors / Grates  Smart Thermostat Washer(s)   Carbon Monoxide Detector s  Fireplace Gas Log(s)  Video Doorbell",
+    "page": 2
+  },
+  {
+    "pdf_field": "73",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Washer(s)   Carbon Monoxide Detector s  Fireplace Gas Log(s)  Video Doorbell Dryer(s)  Garage Door Opener(s)  with   Outdoor Shed  Surround Sound System",
+    "page": 2
+  },
+  {
+    "pdf_field": "74",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Water Heater  All Transmitters  Outd oor Playset(s)  Home Theater / Projector Central Air Conditioning  Intercom System  Plan ted Vegetation   Surveillance System(s)",
+    "page": 2
+  },
+  {
+    "pdf_field": "75",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: al Air Conditioning  Intercom System  Plan ted Vegetation   Surveillance System(s) Window Air Conditioner(s)  Security System ( unless rented)  Hardscape  Electric Vehicle Charging",
+    "page": 2
+  },
+  {
+    "pdf_field": "76",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Window Air Conditioner(s)  Security System ( unless rented)  Hardscape  Electric Vehicle Charging Central Humidifier  Light Fixtures ( as they exist)  Attached Gas Grill  System",
+    "page": 2
+  },
+  {
+    "pdf_field": "77",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: :",
+    "page": 2
+  },
+  {
+    "pdf_field": "78",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: :",
+    "page": 2
+  },
+  {
+    "pdf_field": "79",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: :",
+    "page": 2
+  },
+  {
+    "pdf_field": "80",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "81",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "82",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "83",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "84",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "85",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "86",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "87",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "88",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "89",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "90",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: :",
+    "page": 2
+  },
+  {
+    "pdf_field": "91",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "92",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "93",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "94",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "95",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "96",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "97",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "98",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "99",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "100",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "101",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "102",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | RIGHT: and complete Optional Paragraph 34.",
+    "page": 2
+  },
+  {
+    "pdf_field": "103",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: If Alternative Energy (solar panels) apply, check here Other Items Included at No Added Value:",
+    "page": 2
+  },
+  {
+    "pdf_field": "104",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: If Alternative Energy (solar panels) apply, check here \uf071 and complete Optional Paragraph 34.",
+    "page": 2
+  },
+  {
+    "pdf_field": "105",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Items Not Included:",
+    "page": 2
+  },
+  {
+    "pdf_field": "106",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller warrants to Buyer that all fixtures, systems and Personal Property included in this Contract shall be in operating condition at Possession except:  .",
+    "page": 2
+  },
+  {
+    "pdf_field": "107",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: regardless of age, and does not constitute a threat to health or safety. | RIGHT: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS a, b, OR c] a) FINANCING CONTINGENCY: Not later than forty-five (45) days",
+    "page": 2
+  },
+  {
+    "pdf_field": "108",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 8.  FINANCING: ____ ____ ____ ____ | ABOVE: regardless of age, and does not constitute a threat to health or safety. | RIGHT: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS a, b, OR c] a) FINANCING CONTINGENCY: Not later than forty-five (45) days",
+    "page": 2
+  },
+  {
+    "pdf_field": "109",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 8.  FINANCING: ____ ____ ____ ____ | ABOVE: regardless of age, and does not constitute a threat to health or safety. | RIGHT: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS a, b, OR c] a) FINANCING CONTINGENCY: Not later than forty-five (45) days",
+    "page": 2
+  },
+  {
+    "pdf_field": "110",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 8.  FINANCING: ____ ____ ____ ____ | RIGHT: a) FINANCING CONTINGENCY: Not later than forty-five (45) days",
+    "page": 2
+  },
+  {
+    "pdf_field": "111",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHECK ONE ] \uf071 fixed; \uf071 | RIGHT: adjustable; [CHECK ONE ] \uf071 conventional; \uf071 FHA; \uf071",
+    "page": 2
+  },
+  {
+    "pdf_field": "112",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: adjustable; [CHECK ONE ] \uf071 conventional; \uf071 | RIGHT: FHA; \uf071 VA;",
+    "page": 2
+  },
+  {
+    "pdf_field": "113",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: for financing as follows: \uf071 USDA; \uf071 other    loan for  % of the Purchase Price, plus | RIGHT: \uf071 conventional; \uf071 FHA; \uf071 VA;",
+    "page": 2
+  },
+  {
+    "pdf_field": "114",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 fixed; \uf071 adjustable; [CHECK ONE ] | RIGHT: \uf071 FHA; \uf071 VA;",
+    "page": 2
+  },
+  {
+    "pdf_field": "115",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: uired, with an interest rate (initial rate if an adjustable rate mortgage used) not to exceed  % per annum, amortized over not less than  years. Buyer shall pay discount points not | ABOVE: USDA; \uf071 other    loan for  % of the Purchase Price, plus",
+    "page": 2
+  },
+  {
+    "pdf_field": "116",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "117",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: rtized over not less than  years. Buyer shall pay discount points not to exceed % of the loan amount. Buyer shall pay origination fee(s), closing costs charged by lender, and title | ABOVE: private mortgage insurance (PMI), if required, with an interest rate (initial rate if an adjustable rate",
+    "page": 2
+  },
+  {
+    "pdf_field": "118",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Buyer financing shall be contingent upon Buyer",
+    "page": 2
+  },
+  {
+    "pdf_field": "119",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "120",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial | ABOVE: remain in full force and effect. Upon the expiration of ten (10) Business Days after Date of Acceptance, if Buyer has failed to make a financing",
+    "page": 2
+  },
+  {
+    "pdf_field": "121",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial",
+    "page": 2
+  },
+  {
+    "pdf_field": "122",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "123",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2
+  },
+  {
+    "pdf_field": "124",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: If Buyer is seeking FHA, VA, or USDA financing, | RIGHT: If VA, the Funding Fee, or if FHA, the Mortgage Insurance Premium (MIP), shall be paid by Buyer.",
+    "page": 3
+  },
+  {
+    "pdf_field": "125",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Contract. ____ ____ ____ ____ b)  CASH TRANSACTION WITH NO FINANCING: | ABOVE: If Buyer is seeking FHA, VA, or USDA financing, | RIGHT: If VA, the Funding Fee, or if FHA, the Mortgage Insurance Premium (MIP), shall be paid by Buyer. [ALL CASH]",
+    "page": 3
+  },
+  {
+    "pdf_field": "126",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Contract. ____ ____ ____ ____ b)  CASH TRANSACTION WITH NO FINANCING: | ABOVE: If Buyer is seeking FHA, VA, or USDA financing, | RIGHT: [ALL CASH]",
+    "page": 3
+  },
+  {
+    "pdf_field": "127",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Contract. ____ ____ ____ ____ b)  CASH TRANSACTION WITH NO FINANCING: If VA, the Funding Fee, or if FHA, the Mortgage Insurance Premium (MIP), shall be paid by Buyer. | RIGHT: [ALL CASH] If this selection is made, Buyer will pay at",
+    "page": 3
+  },
+  {
+    "pdf_field": "128",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: to close. The Parties shall share the title company escrow closing fee equally. Unless otherwise provided in Paragraph 31,",
+    "page": 3
+  },
+  {
+    "pdf_field": "129",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: this Contract shall not be contingent upon the sale and/or closing of Buyer\u2019s existing real estate. ____ ____ ____ ____ c)  CASH TRANSACTION, FINANCING ALLOWED: | ABOVE: to close. The Parties shall share the title company escrow closing fee equally. Unless otherwise provided in Paragraph 31, |",
+    "page": 3
+  },
+  {
+    "pdf_field": "132",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: 11.  STATUTORY DISCLOSURES: [CHECK ONE] \uf071 | RIGHT: has \uf071 has not received a completed Illinois Residential Real Property Disclosure; If applicable, prior to signing this Contract, Buyer:",
+    "page": 3
+  },
+  {
+    "pdf_field": "130",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: this Contract shall not be contingent upon the sale and/or closing of Buyer\u2019s existing real estate. ____ ____ ____ ____ c)  CASH TRANSACTION, FINANCING ALLOWED: | ABOVE: to close. The Parties shall share the title company escrow closing fee equally. Unless otherwise provided in Paragraph 31, |",
+    "page": 3
+  },
+  {
+    "pdf_field": "131",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: this Contract shall not be contingent upon the sale and/or closing of Buyer\u2019s existing real estate. ____ ____ ____ ____ c)  CASH TRANSACTION, FINANCING ALLOWED: | RIGHT: If this selection is made, Buyer will pay at closing,",
+    "page": 3
+  },
+  {
+    "pdf_field": "133",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHECK ONE] [CHECK ONE] \uf071 \uf071 has has \uf071 \uf071 | ABOVE: If applicable, prior to signing this Contract, Buyer: | RIGHT: has not received a completed Illinois Residential Real Property Disclosure; has not received the EPA Pamphlet, \u201cProtect Your Family From Lead In Your Home;\u201d",
+    "page": 3
+  },
+  {
+    "pdf_field": "134",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: s \uf071 has not received a completed Illinois Residential Real Property Disclosure; [CHECK ONE] \uf071 has \uf071 has not received the EPA Pamphlet, \u201cProtect Your Family From Lead In Your Home;\u201d",
+    "page": 3
+  },
+  {
+    "pdf_field": "135",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: \uf071 has not received a completed Illinois Residential Real Property Disclosure; \uf071 has not received the EPA Pamphlet, \u201cProtect Your Family From Lead In Your Home;\u201d",
+    "page": 3
+  },
+  {
+    "pdf_field": "136",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3
+  },
+  {
+    "pdf_field": "137",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3
+  },
+  {
+    "pdf_field": "138",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHECK ONE] \uf071 has \uf071 | RIGHT: has not received a Lead-Based Paint Disclosure;",
+    "page": 4
+  },
+  {
+    "pdf_field": "139",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHECK ONE] [CHECK ONE] \uf071 \uf071 has has \uf071 has not received the IEMA, \u201cRadon Testing Guidelines for Real Estate Transactions;\u201d \uf071 | RIGHT: has not received a Lead-Based Paint Disclosure;",
+    "page": 4
+  },
+  {
+    "pdf_field": "140",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: [CHECK ONE] [CHECK ONE] \uf071 \uf071 | ABOVE: \uf071 has \uf071 has not received a Lead-Based Paint Disclosure; | RIGHT: has has \uf071 has not received the IEMA, \u201cRadon Testing Guidelines for Real Estate Transactions;\u201d \uf071 has not received the Disclosure of Information on Radon Hazards.",
+    "page": 4
+  },
+  {
+    "pdf_field": "141",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4
+  },
+  {
+    "pdf_field": "142",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: c) are $   per   (and, if applicable, Master/Umbrella Association fees Seller represents, if applicable, that as of Date of Acceptance Homeowner/Condominium Association(s) fees | ABOVE: proration exceeds the amount of the escrow funds, Seller agrees to pay such excess promptly upon demand.",
+    "page": 4
+  },
+  {
+    "pdf_field": "143",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: c) are $   per   (and, if applicable, Master/Umbrella Association fees Seller represents, if applicable, that as of Date of Acceptance Homeowner/Condominium Association(s) fees",
+    "page": 4
+  },
+  {
+    "pdf_field": "144",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: are $   per   (and, if applicable, Master/Umbrella Association fees are $   per  ). Seller agrees to pay prior to or at Closing the | ABOVE: c) Seller represents, if applicable, that as of Date of Acceptance Homeowner/Condominium Association(s) fees",
+    "page": 4
+  },
+  {
+    "pdf_field": "145",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: are $   per   (and, if applicable, Master/Umbrella Association fees are $   per  ). Seller agrees to pay prior to or at Closing the",
+    "page": 4
+  },
+  {
+    "pdf_field": "146",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: ons is not served within the time specified herein, the provisions of this paragraph shall be deemed waived by the Parties and this Contract shall remain in full for ce and effect.",
+    "page": 4
+  },
+  {
+    "pdf_field": "147",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 4
+  },
+  {
+    "pdf_field": "148",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4
+  },
+  {
+    "pdf_field": "149",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4
+  },
+  {
+    "pdf_field": "150",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: 14.  AS-IS CONDITION \u2013 NO REPRESENTATIONS OR WARRANTIES OF THE PHYSICAL CO NDITION OF THE REAL | RIGHT: [INITIAL IF APPLICABLE]",
+    "page": 5
+  },
+  {
+    "pdf_field": "151",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ESTATE: ____ ____ ____ ____ This Contract is for the sale and purchase of the Real Estate in its | ABOVE: 14.  AS-IS CONDITION \u2013 NO REPRESENTATIONS OR WARRANTIES OF THE PHYSICAL CO NDITION OF THE REAL | RIGHT: [INITIAL IF APPLICABLE]",
+    "page": 5
+  },
+  {
+    "pdf_field": "152",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ESTATE: ____ ____ ____ ____ This Contract is for the sale and purchase of the Real Estate in its [INITIAL IF APPLICABLE] | ABOVE: 14.  AS-IS CONDITION \u2013 NO REPRESENTATIONS OR WARRANTIES OF THE PHYSICAL CO NDITION OF THE REAL",
+    "page": 5
+  },
+  {
+    "pdf_field": "153",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ESTATE: ____ ____ ____ ____ This Contract is for the sale and purchase of the Real Estate in its [INITIAL IF APPLICABLE]",
+    "page": 5
+  },
+  {
+    "pdf_field": "154",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: 15.  INSPECTIONS: | RIGHT: a) WAIVER OF PROFESSIONAL INSPECTIONS:",
+    "page": 5
+  },
+  {
+    "pdf_field": "155",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ IF NO SUBPARAGRAPH IS INITIALED UNDER THIS SECTION, SUBPARAGRAPH a) SHALL APPLY. | ABOVE: 15.  INSPECTIONS: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS | RIGHT: a) WAIVER OF PROFESSIONAL INSPECTIONS: Buyer acknowledges the right to conduct inspections",
+    "page": 5
+  },
+  {
+    "pdf_field": "156",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ IF NO SUBPARAGRAPH IS INITIALED UNDER THIS SECTION, SUBPARAGRAPH a) SHALL APPLY. | ABOVE: 15.  INSPECTIONS: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS | RIGHT: a) WAIVER OF PROFESSIONAL INSPECTIONS: Buyer acknowledges the right to conduct inspections",
+    "page": 5
+  },
+  {
+    "pdf_field": "157",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ IF NO SUBPARAGRAPH IS INITIALED UNDER THIS SECTION, SUBPARAGRAPH a) SHALL APPLY. | ABOVE: [INITIAL ONLY ONE OF THE FOLLOWING SUBPARAGRAPHS | RIGHT: a) WAIVER OF PROFESSIONAL INSPECTIONS: Buyer acknowledges the right to conduct inspections",
+    "page": 5
+  },
+  {
+    "pdf_field": "158",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: of the Real Estate and hereby waives the right to conduct any such inspections of the Real Estate, and further agrees | RIGHT: b) RIGHT TO INSPECTION WITH REQUESTS: Buyer may conduct at Buyer\u2019s expense (unless payment",
+    "page": 5
+  },
+  {
+    "pdf_field": "159",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: that the provisions of subparagraphs b) and c) of this Paragraph shall not apply. ____ ____ ____ ____ | ABOVE: of the Real Estate and hereby waives the right to conduct any such inspections of the Real Estate, and further agrees | RIGHT: b) RIGHT TO INSPECTION WITH REQUESTS: Buyer may conduct ",
+    "page": 5
+  },
+  {
+    "pdf_field": "160",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: that the provisions of subparagraphs b) and c) of this Paragraph shall not apply. ____ ____ ____ ____ | ABOVE: of the Real Estate and hereby waives the right to conduct any such inspections of the Real Estate, and further agrees | RIGHT: b) RIGHT TO INSPECTION WITH REQUESTS: Buyer may conduct ",
+    "page": 5
+  },
+  {
+    "pdf_field": "161",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: that the provisions of subparagraphs b) and c) of this Paragraph shall not apply. ____ ____ ____ ____ | RIGHT: b) RIGHT TO INSPECTION WITH REQUESTS: Buyer may conduct at Buyer\u2019s expense (unless payment",
+    "page": 5
+  },
+  {
+    "pdf_field": "162",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: ion report with the Notice provided under this subparagraph unless such inspection report, or any part thereof, is specifically requested in writing by Seller or Seller\u2019s attorney.",
+    "page": 5
+  },
+  {
+    "pdf_field": "163",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 5
+  },
+  {
+    "pdf_field": "164",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5
+  },
+  {
+    "pdf_field": "165",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5
+  },
+  {
+    "pdf_field": "166",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: waiver of Buyer\u2019s rights to terminate this Contract under this Paragraph 15 and this Contract shall remain | RIGHT: c) RIGHT TO INSPECTION WITH NO REQUESTS:",
+    "page": 6
+  },
+  {
+    "pdf_field": "167",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ in full force and effect. | ABOVE: waiver of Buyer\u2019s rights to terminate this Contract under this Paragraph 15 and this Contract shall remain | RIGHT: c) RIGHT TO INSPECTION WITH NO REQUESTS:",
+    "page": 6
+  },
+  {
+    "pdf_field": "168",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ in full force and effect. | ABOVE: waiver of Buyer\u2019s rights to terminate this Contract under this Paragraph 15 and this Contract shall remain | RIGHT: c) RIGHT TO INSPECTION WITH NO REQUESTS: Buyer may conduct at Buyer\u2019s expense such",
+    "page": 6
+  },
+  {
+    "pdf_field": "169",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ in full force and effect. | ABOVE: waiver of Buyer\u2019s rights to terminate this Contract under this Paragraph 15 and this Contract shall remain | RIGHT: c) RIGHT TO INSPECTION WITH NO REQUESTS: Buyer may conduct at Buyer\u2019s expense such",
+    "page": 6
+  },
+  {
+    "pdf_field": "170",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: subparagraph shall allow Seller to declare this Contract terminated and direct the return of Buyer\u2019s Earnest Money. | RIGHT: a) WOOD DESTROYING INSECT INSPECTION:",
+    "page": 6
+  },
+  {
+    "pdf_field": "171",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 16.  ADDITIONAL INSPECTIONS NOT SUBJECT TO PARAGRAPH 14 AND 15: ____ ____ ____ ____ | ABOVE: subparagraph shall allow Seller to declare this Contract terminated and direct the return of Buyer\u2019s Earnest Money. | RIGHT: a) WOOD DESTROYING INSECT INSPECTION: Within",
+    "page": 6
+  },
+  {
+    "pdf_field": "172",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 16.  ADDITIONAL INSPECTIONS NOT SUBJECT TO PARAGRAPH 14 AND 15: ____ ____ ____ ____ | ABOVE: subparagraph shall allow Seller to declare this Contract terminated and direct the return of Buyer\u2019s Earnest Money. | RIGHT: a) WOOD DESTROYING INSECT INSPECTION: Within",
+    "page": 6
+  },
+  {
+    "pdf_field": "173",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: 16.  ADDITIONAL INSPECTIONS NOT SUBJECT TO PARAGRAPH 14 AND 15: ____ ____ ____ ____ | RIGHT: a) WOOD DESTROYING INSECT INSPECTION: Within [INITIAL ALL APPLICABLE SUBPARAGRAPHS] \ufb01fteen",
+    "page": 6
+  },
+  {
+    "pdf_field": "174",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: infestation or structural damage, Buyer has the option within \ufb01ve (5) Business Days | RIGHT: b) WELL OR SANITARY SYSTEM INSPECTION:",
+    "page": 6
+  },
+  {
+    "pdf_field": "175",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: proceed with the purchase or to declare this Contract null and void. ____ ____ ____ ____ | ABOVE: infestation or structural damage, Buyer has the option within \ufb01ve (5) Business Days | RIGHT: b) WELL OR SANITARY SYSTEM INSPECTION:",
+    "page": 6
+  },
+  {
+    "pdf_field": "176",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: proceed with the purchase or to declare this Contract null and void. ____ ____ ____ ____ | ABOVE: infestation or structural damage, Buyer has the option within \ufb01ve (5) Business Days | RIGHT: b) WELL OR SANITARY SYSTEM INSPECTION: Notwithstanding anything in the preceding",
+    "page": 6
+  },
+  {
+    "pdf_field": "177",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: proceed with the purchase or to declare this Contract null and void. ____ ____ ____ ____ | RIGHT: b) WELL OR SANITARY SYSTEM INSPECTION: Notwithstanding anything in the preceding",
+    "page": 6
+  },
+  {
+    "pdf_field": "178",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: special assessments confirmed prior to Date of Acceptance.",
+    "page": 6
+  },
+  {
+    "pdf_field": "179",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 6
+  },
+  {
+    "pdf_field": "180",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6
+  },
+  {
+    "pdf_field": "181",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6
+  },
+  {
+    "pdf_field": "182",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: ch exceptions waived or insured over prior to Closing, Buyer may elect to take title as it then is with the right to deduct from the Purchase Price prior encumbrances of a definite",
+    "page": 7
+  },
+  {
+    "pdf_field": "183",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 7
+  },
+  {
+    "pdf_field": "184",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7
+  },
+  {
+    "pdf_field": "185",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7
+  },
+  {
+    "pdf_field": "186",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial by Notice to Seller and this Contract shall be null and void. | ABOVE: Buyer. If the matters specified in such Notice are not resolved prior to Closing, Buyer may terminate this Contract",
+    "page": 8
+  },
+  {
+    "pdf_field": "187",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial by Notice to Seller and this Contract shall be null and void.",
+    "page": 8
+  },
+  {
+    "pdf_field": "188",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 8
+  },
+  {
+    "pdf_field": "189",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 8
+  },
+  {
+    "pdf_field": "190",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: of future e-mail Notice by any form of Notice provided by this Contract; or",
+    "page": 9
+  },
+  {
+    "pdf_field": "191",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 9
+  },
+  {
+    "pdf_field": "192",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9
+  },
+  {
+    "pdf_field": "193",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9
+  },
+  {
+    "pdf_field": "194",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] | ABOVE: THE FOLLOWING NUMBERED PARAGRAPHS ARE A PART OF THIS CONTRACT ONLY IF INITIALED BY THE PARTIES. | RIGHT: 30.  CONFIRMATION OF DUAL AGENCY: The Parties confirm that they have previously",
+    "page": 10
+  },
+  {
+    "pdf_field": "195",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] ____ ____ ____ ____ | ABOVE: THE FOLLOWING NUMBERED PARAGRAPHS ARE A PART OF THIS CONTRACT ONLY IF INITIALED BY THE PARTIES. | RIGHT: 30.  CONFIRMATION OF DUAL AGENCY: The Parties confirm that they have previously",
+    "page": 10
+  },
+  {
+    "pdf_field": "196",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] ____ ____ ____ ____ | RIGHT: 30.  CONFIRMATION OF DUAL AGENCY: The Parties confirm that they have previously",
+    "page": 10
+  },
+  {
+    "pdf_field": "197",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] ____ ____ ____ ____ | RIGHT: 30.  CONFIRMATION OF DUAL AGENCY: The Parties confirm that they have previously",
+    "page": 10
+  },
+  {
+    "pdf_field": "198",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [INITIALS] consented to ____ ____ ____ ____ | ABOVE: THE FOLLOWING NUMBERED PARAGRAPHS ARE A PART OF THIS CONTRACT ONLY IF INITIALED BY THE PARTIES. | RIGHT: [LICENSEE] acting as a Dual Agent in providing brokerage services on their The Parties confirm that they have previously",
+    "page": 10
+  },
+  {
+    "pdf_field": "199",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: consented to | RIGHT: 31.  SALE OF BUYER\u2019S REAL ESTATE:",
+    "page": 10
+  },
+  {
+    "pdf_field": "200",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: behalf and specifically consent to Licensee acting as a Dual Agent with regard to the transaction referred to in this Contract. ____ ____ ____ ____ | ABOVE: consented to | RIGHT: 31.  SALE OF BUYER\u2019S REAL ESTATE:",
+    "page": 10
+  },
+  {
+    "pdf_field": "201",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: behalf and specifically consent to Licensee acting as a Dual Agent with regard to the transaction referred to in this Contract. ____ ____ ____ ____ | ABOVE: consented to | RIGHT: 31.  SALE OF BUYER\u2019S REAL ESTATE:",
+    "page": 10
+  },
+  {
+    "pdf_field": "202",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: behalf and specifically consent to Licensee acting as a Dual Agent with regard to the transaction referred to in this Contract. ____ ____ ____ ____ | RIGHT: 31.  SALE OF BUYER\u2019S REAL ESTATE:",
+    "page": 10
+  },
+  {
+    "pdf_field": "203",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: a) REPRESENTATIONS ABOUT BUYER\u2019S REAL ESTATE: Buyer represents to Seller as follows:",
+    "page": 10
+  },
+  {
+    "pdf_field": "204",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: 2) Buyer [CHECK ONE] \uf071 | RIGHT: has \uf071 has not entered into a contract to sell Buyer\u2019s Real Estate.",
+    "page": 10
+  },
+  {
+    "pdf_field": "205",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: If Buyer has entered into a contract to sell Buyer\u2019s Real Estate, that contract: a) [CHECK ONE] \uf071 | ABOVE: \uf071 has \uf071 has not entered into a contract to sell Buyer\u2019s Real Estate. | RIGHT: is \uf071 is not subject to a financing contingency.",
+    "page": 10
+  },
+  {
+    "pdf_field": "206",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: a) b) [CHECK ONE] [CHECK ONE] \uf071 \uf071 | RIGHT: is is \uf071 \uf071 is not subject to a financing contingency. is not subject to a real estate sale contingency.",
+    "page": 10
+  },
+  {
+    "pdf_field": "207",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: b) c) [CHECK ONE] [CHECK ONE] \uf071 \uf071 | ABOVE: \uf071 is \uf071 is not subject to a financing contingency. | RIGHT: is is \uf071 \uf071 is not subject to a real estate sale contingency. is not subject to a real estate closing contingency.",
+    "page": 10
+  },
+  {
+    "pdf_field": "208",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: 3) Buyer [CHECK ONE] \uf071 has \uf071 has not publicly listed Buyer\u2019s Real Estate for sale with a licensed real estate | ABOVE: \uf071 is \uf071 is not subject to a real estate sale contingency. \uf071 is \uf071 is not subject to a real estate closing contingency.",
+    "page": 10
+  },
+  {
+    "pdf_field": "209",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: b) \uf071 Brokerage\u2019s Address:   Phone: | ABOVE: [FOR INFORMATION ONLY] | RIGHT: Does not intend to list Buyer\u2019s Real Estate for sale with a licensed real estate brokerage.",
+    "page": 10
+  },
+  {
+    "pdf_field": "210",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: multiple listing service within five (5) Business Days after Date of Acceptance. [FOR INFORMATION ONLY] Brokerage:",
+    "page": 10
+  },
+  {
+    "pdf_field": "211",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [FOR INFORMATION ONLY] Brokerage\u2019s Address:   Phone:",
+    "page": 10
+  },
+  {
+    "pdf_field": "212",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 10
+  },
+  {
+    "pdf_field": "213",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ect as of  , 20  . Such contract should provide for a closing date This Contract is contingent upon Buyer having entered into a contract for the sale of Buyer\u2019s Real Estate that is",
+    "page": 10
+  },
+  {
+    "pdf_field": "214",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 10
+  },
+  {
+    "pdf_field": "215",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE:  or has entered into a contract for the sale of Buyer\u2019s Real Estate prior to the execution of this Contract, this Contract is contingent upon Buyer closing the sale of Buyer\u2019s Real",
+    "page": 10
+  },
+  {
+    "pdf_field": "216",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 10
+  },
+  {
+    "pdf_field": "217",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 10
+  },
+  {
+    "pdf_field": "218",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 10
+  },
+  {
+    "pdf_field": "219",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Estate on or before  , 20  . | RIGHT: If Notice that Buyer has not closed the sale of Buyer\u2019s",
+    "page": 11
+  },
+  {
+    "pdf_field": "220",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Estate on or before  , 20  . | RIGHT: If Notice that Buyer has not closed the sale of Buyer\u2019s",
+    "page": 11
+  },
+  {
+    "pdf_field": "221",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 11
+  },
+  {
+    "pdf_field": "222",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT:  when Buyer has delivered written waiver and deposited with the Escrowee additional earnest money in the amount of $   in the form of a cashier\u2019s or certified check within the time | ABOVE: Buyer shall be",
+    "page": 11
+  },
+  {
+    "pdf_field": "223",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e) BUYER COOPERATION REQUIRED: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT:",
+    "page": 11
+  },
+  {
+    "pdf_field": "224",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e) BUYER COOPERATION REQUIRED: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT:",
+    "page": 11
+  },
+  {
+    "pdf_field": "225",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e) BUYER COOPERATION REQUIRED: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT:",
+    "page": 11
+  },
+  {
+    "pdf_field": "226",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e) BUYER COOPERATION REQUIRED: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT: [INITIAL APPLICABLE SUBPARAGRAPHS]",
+    "page": 11
+  },
+  {
+    "pdf_field": "227",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT: a) In the event Seller has entered into a prior real estate contract that is contingent upon the sale or",
+    "page": 11
+  },
+  {
+    "pdf_field": "228",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ ____ ____ ____ ____ | ABOVE: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT: a) In the event Seller has entered into a prior real estate contract that is contingent upon ",
+    "page": 11
+  },
+  {
+    "pdf_field": "229",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ ____ ____ ____ ____ | ABOVE: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT: a) In the event Seller has entered into a prior real estate contract that is contingent upon ",
+    "page": 11
+  },
+  {
+    "pdf_field": "230",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ ____ ____ ____ ____ | ABOVE: in Paragraph 31 at any time, and Buyer agrees to cooperate in providing relevant information. | RIGHT: 32.  CANCELLATION OF PRIOR REAL ESTATE CONTRACT: a) In the event Seller has entered into a prior real estate contract that is contingent upon ",
+    "page": 11
+  },
+  {
+    "pdf_field": "231",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: e, this Contract shall be subject to written cancellation of the prior contract on or before  , 20  . Seller\u2019s notice to the purchaser under the prior contract should not be served | ABOVE: ____ ____ ____ ____ a) In the event Seller has entered into a prior real estate contract that is conting",
+    "page": 11
+  },
+  {
+    "pdf_field": "232",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: e, this Contract shall be subject to written cancellation of the prior contract on or before  , 20  . Seller\u2019s notice to the purchaser under the prior contract should not be served",
+    "page": 11
+  },
+  {
+    "pdf_field": "233",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial | ABOVE: purchaser under the prior contract should not be served until after Attorney Review and Professional Inspections provisions of this Contract have expired, been satisfied or waived.",
+    "page": 11
+  },
+  {
+    "pdf_field": "234",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial",
+    "page": 11
+  },
+  {
+    "pdf_field": "235",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 11
+  },
+  {
+    "pdf_field": "236",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 11
+  },
+  {
+    "pdf_field": "237",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: b) In the event Seller has entered into a prior real estate contract that is NOT contingent upon",
+    "page": 12
+  },
+  {
+    "pdf_field": "238",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: b) In the event Seller has entered into a prior real estate contract that is NOT contingent upon",
+    "page": 12
+  },
+  {
+    "pdf_field": "239",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: b) In the event Seller has entered into a prior real estate contract that is NOT contingent upon",
+    "page": 12
+  },
+  {
+    "pdf_field": "240",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: b) In the event Seller has entered into a prior real estate contract that is NOT contingent upon",
+    "page": 12
+  },
+  {
+    "pdf_field": "241",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: sale of purchaser\u2019s real estate, this Contract shall be subject to written cancellation of the prior contract on or before  , 20  . Except for requirement of the deposit of Earnest | ABOVE: b) In the event Seller has entered into a prior real estate contract that is NOT contingent upon",
+    "page": 12
+  },
+  {
+    "pdf_field": "242",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 12
+  },
+  {
+    "pdf_field": "243",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: be measured from the Date of Acceptance of this Contract but shall be measured from the date that Seller delivers",
+    "page": 12
+  },
+  {
+    "pdf_field": "244",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT:  to Buyer that the prior real estate contract has been cancelled. ____ ____ ____ ____  c) In the event Buyer has entered into a prior contract for the purchase of other real estate | ABOVE: be measured from the Date of Acceptance of this Contract but shall be measured from the date that Seller",
+    "page": 12
+  },
+  {
+    "pdf_field": "245",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT:  to Buyer that the prior real estate contract has been cancelled. ____ ____ ____ ____  c) In the event Buyer has entered into a prior contract for the purchase of other real estate | ABOVE: be measured from the Date of Acceptance of this Contract but shall be measured from the date that Seller",
+    "page": 12
+  },
+  {
+    "pdf_field": "246",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT:  to Buyer that the prior real estate contract has been cancelled. ____ ____ ____ ____  c) In the event Buyer has entered into a prior contract for the purchase of other real estate",
+    "page": 12
+  },
+  {
+    "pdf_field": "247",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: ____ ____ ____ ____  c) In the event Buyer has entered into a prior contract for the purchase of other real estate",
+    "page": 12
+  },
+  {
+    "pdf_field": "248",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (\u201cBuyer\u2019s Prior Contract\u201d), this Contract shall be contingent upon the Notice by Buyer to Seller on or before , 20   that Buyer\u2019s Prior Contract has been terminated.",
+    "page": 12
+  },
+  {
+    "pdf_field": "249",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: ior real estate contract referred to in this p aragraph is not cancelled on or before the date specified in the applicable subparagraph above, this Contract shall be null and void. | RIGHT: 33.  HOME WARRANTY POLICY: Seller shall provide at no expense to Buyer  a Home Warranty",
+    "page": 12
+  },
+  {
+    "pdf_field": "250",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: ior real estate contract referred to in this p aragraph is not cancelled on or before the date specified in the applicable subparagraph above, this Contract shall be null and void. | RIGHT: 33.  HOME WARRANTY POLICY: Seller shall provide at no expense to Buyer  a H",
+    "page": 12
+  },
+  {
+    "pdf_field": "251",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: ior real estate contract referred to in this p aragraph is not cancelled on or before the date specified in the applicable subparagraph above, this Contract shall be null and void. | RIGHT: 33.  HOME WARRANTY POLICY: Seller shall provide at no expense to Buyer  a H",
+    "page": 12
+  },
+  {
+    "pdf_field": "252",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: 33.  HOME WARRANTY POLICY: Seller shall provide at no expense to Buyer  a Home Warranty",
+    "page": 12
+  },
+  {
+    "pdf_field": "253",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ Policy at a cost of $  . Evidence of a fully pre-paid policy shall be delivered at Closing. 33.  HOME WARRANTY POLICY: | RIGHT: Seller shall provide at no expense to Buyer  a Home Warranty",
+    "page": 12
+  },
+  {
+    "pdf_field": "254",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: ____ ____ ____ ____ Policy at a cost of $  . Evidence of a fully pre-paid policy shall be delivered at Closing. | RIGHT: 34.  ALTERNATIVE ENERGY: There are: \uf071 Solar Panels",
+    "page": 12
+  },
+  {
+    "pdf_field": "255",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: ____ ____ ____ ____ 33.  HOME WARRANTY POLICY: Policy at a cost of $  . Evidence of a fully pre-paid policy shall be delivered at Closing. | RIGHT: 34.  ALTERNATIVE ENERGY: There are: \uf071 Solar Panels",
+    "page": 12
+  },
+  {
+    "pdf_field": "256",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: ____ ____ ____ ____ 33.  HOME WARRANTY POLICY: Policy at a cost of $  . Evidence of a fully pre-paid policy shall be delivered at Closing. | RIGHT: 34.  ALTERNATIVE ENERGY: There are: \uf071 Solar Panels",
+    "page": 12
+  },
+  {
+    "pdf_field": "257",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: 33.  HOME WARRANTY POLICY: | RIGHT: 34.  ALTERNATIVE ENERGY: There are: \uf071 Solar Panels \uf071 Other:",
+    "page": 12
+  },
+  {
+    "pdf_field": "258",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: 34.  ALTERNATIVE ENERGY: There are: \uf071 Solar Panels | RIGHT: \uf071 Other:",
+    "page": 12
+  },
+  {
+    "pdf_field": "259",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: There are: \uf071 Solar Panels \uf071 Other:",
+    "page": 12
+  },
+  {
+    "pdf_field": "260",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: There are: \uf071 Solar Panels \uf071 Other:",
+    "page": 12
+  },
+  {
+    "pdf_field": "261",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Policy at a cost of $  . Evidence of a fully pre-paid policy shall be delivered at Closing. | RIGHT: [CHECK ONE] :",
+    "page": 12
+  },
+  {
+    "pdf_field": "262",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Rented with a monthly payment of $  . | ABOVE: \uf071 Owned, but subject to a financing agreement with remaining payment(s) of $   which shall be: \uf071 Paid in full by Seller not later than Closing, or",
+    "page": 12
+  },
+  {
+    "pdf_field": "263",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: [CHECK ONE] :",
+    "page": 12
+  },
+  {
+    "pdf_field": "265",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 Rented with a monthly payment of $  . \uf071 Paid in full by Seller not later than Closing, or",
+    "page": 12
+  },
+  {
+    "pdf_field": "266",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: e documents are inconsistent with the representations in this paragraph or the agreements cannot be terminated or assigned as of the Closing Date, the Buyer may cancel at any time. | RIGHT: 35.  POSSESSION AFTER CLOSING: Possession shall be delivered no later than 11:59 p.m. on the",
+    "page": 12
+  },
+  {
+    "pdf_field": "267",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e documents are inconsistent with the representations in this paragraph or the agreements cannot be terminated or assigned as of the Closing Date, the Buyer may cancel at any time. | RIGHT: 35.  POSSESSION AFTER CLOSING: Possession shall be delivered no later than ",
+    "page": 12
+  },
+  {
+    "pdf_field": "268",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: e documents are inconsistent with the representations in this paragraph or the agreements cannot be terminated or assigned as of the Closing Date, the Buyer may cancel at any time. | RIGHT: 35.  POSSESSION AFTER CLOSING: Possession shall be delivered no later than ",
+    "page": 12
+  },
+  {
+    "pdf_field": "269",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: 35.  POSSESSION AFTER CLOSING: Possession shall be delivered no later than 11:59 p.m. on the",
+    "page": 12
+  },
+  {
+    "pdf_field": "270",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ date that is [CHECK ONE] 35.  POSSESSION AFTER CLOSING: \uf071 days after the date of Closing or | RIGHT: Possession shall be delivered no later than 11:59 p.m. on the \uf071 , 20   (\u201cthe",
+    "page": 12
+  },
+  {
+    "pdf_field": "271",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ date that is [CHECK ONE] 35.  POSSESSION AFTER CLOSING: \uf071 days after the date of Closing or | RIGHT: Possession shall be delivered no later than 11:59 p.m. on the \uf071 , 20   (\u201cthe",
+    "page": 12
+  },
+  {
+    "pdf_field": "272",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: \uf071 days after the date of Closing or Possession shall be delivered no later than 11:59 p.m. on the \uf071 , 20   (\u201cthe",
+    "page": 12
+  },
+  {
+    "pdf_field": "273",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Possession shall be delivered no later than 11:59 p.m. on the \uf071 , 20   (\u201cthe",
+    "page": 12
+  },
+  {
+    "pdf_field": "274",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: elivery of possession. Seller shall deposit in escrow at Closing with an escrowee as agreed, the sum of $   (if left blank, two percent (2%) of the Purchase Price) and disbursed as",
+    "page": 12
+  },
+  {
+    "pdf_field": "275",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: follows: a) The sum of $   per day to Buyer for use and occupancy from and including the day",
+    "page": 12
+  },
+  {
+    "pdf_field": "276",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: deposit referred to above. Nothing herein shall be deemed to create a Landlord/Tenant relationship between the Parties. | RIGHT: 36.  SPECIFIED PARTY APPROVAL: This Contract is contingent upon the approval of the Real",
+    "page": 12
+  },
+  {
+    "pdf_field": "277",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: deposit referred to above. Nothing herein shall be deemed to create a Landlord/Tenant relationship between the Parties. | RIGHT: 36.  SPECIFIED PARTY APPROVAL: This Contract is contingent upon the approval of the Real",
+    "page": 12
+  },
+  {
+    "pdf_field": "278",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: deposit referred to above. Nothing herein shall be deemed to create a Landlord/Tenant relationship between the Parties. | RIGHT: 36.  SPECIFIED PARTY APPROVAL: This Contract is contingent upon the approval of the Real",
+    "page": 12
+  },
+  {
+    "pdf_field": "279",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: deposit referred to above. Nothing herein shall be deemed to create a Landlord/Tenant relationship between the Parties. | RIGHT: 36.  SPECIFIED PARTY APPROVAL: This Contract is contingent upon the approval of the Real",
+    "page": 12
+  },
+  {
+    "pdf_field": "280",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ Estate by   Buyer\u2019s Specified Party, within five (5) Business Days after Date of Acceptance. | ABOVE: the Parties. | RIGHT: This Contract is contingent upon the approval of the Real",
+    "page": 12
+  },
+  {
+    "pdf_field": "281",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial | ABOVE: shall be deemed waived by the Parties and this Contract shall remain in full force and effect.",
+    "page": 12
+  },
+  {
+    "pdf_field": "282",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial   Buyer Initial    Seller Initial   Seller Initial",
+    "page": 12
+  },
+  {
+    "pdf_field": "283",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 12
+  },
+  {
+    "pdf_field": "284",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 12
+  },
+  {
+    "pdf_field": "285",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: 37.  CONTRACT ADDENDUMS: The following addendums have been approved to be attached to",
+    "page": 13
+  },
+  {
+    "pdf_field": "286",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: 37.  CONTRACT ADDENDUMS: The following addendums have been approved to be attached to",
+    "page": 13
+  },
+  {
+    "pdf_field": "287",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: 37.  CONTRACT ADDENDUMS: The following addendums have been approved to be attached to",
+    "page": 13
+  },
+  {
+    "pdf_field": "288",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | RIGHT: 37.  CONTRACT ADDENDUMS: The following addendums have been approved to be attached to",
+    "page": 13
+  },
+  {
+    "pdf_field": "289",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: the Multi-Board Residential Real Estate Contract 8.0 and, if checked, are hereby incorporated into this Contract: | RIGHT: Appraisal Addendum \uf071",
+    "page": 13
+  },
+  {
+    "pdf_field": "290",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: \uf071 Appraisal Addendum | RIGHT: Multi-Unit (4 Units or fewer) \uf071",
+    "page": 13
+  },
+  {
+    "pdf_field": "291",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: The following addendums have been approved to be attached to | RIGHT: Reverse Contingency Addendum",
+    "page": 13
+  },
+  {
+    "pdf_field": "292",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: \uf071 Reverse Contingency Addendum | RIGHT: Short Sale Addendum",
+    "page": 13
+  },
+  {
+    "pdf_field": "293",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [IDENTIFY BY TITLE] : | ABOVE: \uf071 Reverse Contingency Addendum \uf071 Short Sale Addendum",
+    "page": 13
+  },
+  {
+    "pdf_field": "294",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: \uf071 Multi-Unit (4 Units or fewer) \uf071 Short Sale Addendum",
+    "page": 13
+  },
+  {
+    "pdf_field": "295",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: [IDENTIFY BY TITLE] | RIGHT: 38. MISCELLANEOUS PROVISIONS: Buyer\u2019s and Seller\u2019s obligations are contingent upon the",
+    "page": 13
+  },
+  {
+    "pdf_field": "296",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: [IDENTIFY BY TITLE] : | RIGHT: 38. MISCELLANEOUS PROVISIONS: Buyer\u2019s and Seller\u2019s obligations are contingent upon the",
+    "page": 13
+  },
+  {
+    "pdf_field": "297",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: [IDENTIFY BY TITLE] : | RIGHT: 38. MISCELLANEOUS PROVISIONS: Buyer\u2019s and Seller\u2019s obligations are contingent upon the",
+    "page": 13
+  },
+  {
+    "pdf_field": "298",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ ____ ____ ____ | ABOVE: : | RIGHT: 38. MISCELLANEOUS PROVISIONS: Buyer\u2019s and Seller\u2019s obligations are contingent upon the",
+    "page": 13
+  },
+  {
+    "pdf_field": "299",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: [CHECK APPLICABLE BOXES] | RIGHT: Articles of Agreement for Deed \uf071 Tax-Deferred Exchange \uf071",
+    "page": 13
+  },
+  {
+    "pdf_field": "300",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: or Purchase Money Mortgage | RIGHT: Assumption of Seller\u2019s Mortgage \uf071 Commercial / Investment",
+    "page": 13
+  },
+  {
+    "pdf_field": "301",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 | ABOVE: \uf071 Assumption of Seller\u2019s Mortgage | RIGHT: Cooperative Apartment \uf071 New Construction",
+    "page": 13
+  },
+  {
+    "pdf_field": "302",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Articles of Agreement for Deed \uf071 Tax-Deferred Exchange | RIGHT: \uf071 Vacant Land",
+    "page": 13
+  },
+  {
+    "pdf_field": "303",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: or Purchase Money Mortgage \uf071 Interest Bearing Account | ABOVE: \uf071 Tax-Deferred Exchange \uf071 | RIGHT: \uf071 Lease Purchase",
+    "page": 13
+  },
+  {
+    "pdf_field": "304",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Assumption of Seller\u2019s Mortgage \uf071 Commercial / Investment | ABOVE: \uf071 Interest Bearing Account \uf071",
+    "page": 13
+  },
+  {
+    "pdf_field": "305",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Cooperative Apartment \uf071 New Construction | ABOVE: \uf071 Commercial / Investment",
+    "page": 13
+  },
+  {
+    "pdf_field": "306",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Tax-Deferred Exchange \uf071 Vacant Land",
+    "page": 13
+  },
+  {
+    "pdf_field": "307",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Interest Bearing Account \uf071 Lease Purchase | ABOVE: Vacant Land",
+    "page": 13
+  },
+  {
+    "pdf_field": "308",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Other: | ABOVE: \uf071 Assumption of Seller\u2019s Mortgage \uf071 Commercial / Investment \uf071 Cooperative Apartment \uf071 New Construction",
+    "page": 13
+  },
+  {
+    "pdf_field": "309",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: \uf071 Cooperative Apartment \uf071 New Construction",
+    "page": 13
+  },
+  {
+    "pdf_field": "310",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial",
+    "page": 13
+  },
+  {
+    "pdf_field": "311",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer Initial  Buyer Initial Seller Initial  Seller Initial",
+    "page": 13
+  },
+  {
+    "pdf_field": "312",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 13
+  },
+  {
+    "pdf_field": "313",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 13
+  },
+  {
+    "pdf_field": "314",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: GNED BY ALL PARTIES AND DELIVERED TO THE PARTIES OR THEIR AGENTS. THE PARTIES REPRESENT THAT THE TEXT OF THIS COPYRIGHTED FORM HAS NOT BEEN ALTERED AND IS IDENTICAL TO THE OFFICIAL",
+    "page": 14
+  },
+  {
+    "pdf_field": "315",
+    "field_type": "/Sig",
+    "neighbor_text": "ABOVE: MULTI-BOARD RESIDENTIAL REAL ESTATE CONTRACT 8.0. | RIGHT: DATE OF ACCEPTANCE",
+    "page": 14
+  },
+  {
+    "pdf_field": "316",
+    "field_type": "/Sig",
+    "neighbor_text": "ABOVE: Date of Offer DATE OF ACCEPTANCE",
+    "page": 14
+  },
+  {
+    "pdf_field": "317",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer Signature Seller Signature",
+    "page": 14
+  },
+  {
+    "pdf_field": "318",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer Signature  Seller Signature | RIGHT: [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "319",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Print Buyer(s) Name(s) [REQUIRED] Print Seller(s) Name(s) [REQUIRED] | RIGHT: [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "320",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Address [REQUIRED] Address | RIGHT: City, State, Zip [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "321",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: City, State, Zip [REQUIRED] | ABOVE: Address [REQUIRED] | RIGHT: City, State, Zip [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "322",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Phone  E-mail  Phone  E-mail | RIGHT: FOR INFORMATION ONLY",
+    "page": 14
+  },
+  {
+    "pdf_field": "323",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: FOR INFORMATION ONLY",
+    "page": 14
+  },
+  {
+    "pdf_field": "324",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "325",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: FOR INFORMATION ONLY",
+    "page": 14
+  },
+  {
+    "pdf_field": "335",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: E-mail E-mail",
+    "page": 14
+  },
+  {
+    "pdf_field": "326",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer\u2019s Brokerage MLS # State License # Seller\u2019s Brokerage MLS # State License #",
+    "page": 14
+  },
+  {
+    "pdf_field": "327",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address  City Zip Address City Zip",
+    "page": 14
+  },
+  {
+    "pdf_field": "328",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address  City Zip Address City Zip",
+    "page": 14
+  },
+  {
+    "pdf_field": "329",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Address  City Zip Address City Zip",
+    "page": 14
+  },
+  {
+    "pdf_field": "330",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer\u2019s Designated Agent MLS # State License #  Seller\u2019s Designated Agent  MLS # State License #",
+    "page": 14
+  },
+  {
+    "pdf_field": "331",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer\u2019s Designated Agent MLS # State License #  Seller\u2019s Designated Agent  MLS # State License #",
+    "page": 14
+  },
+  {
+    "pdf_field": "332",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Phone Fax Phone Fax",
+    "page": 14
+  },
+  {
+    "pdf_field": "333",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: E-mail E-mail",
+    "page": 14
+  },
+  {
+    "pdf_field": "336",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer\u2019s Attorney E-mail Seller\u2019s Attorney E-mail",
+    "page": 14
+  },
+  {
+    "pdf_field": "337",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address City State Zip Address City State Zip",
+    "page": 14
+  },
+  {
+    "pdf_field": "338",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Address City State Zip Address City State Zip",
+    "page": 14
+  },
+  {
+    "pdf_field": "339",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone Fax Phone Fax",
+    "page": 14
+  },
+  {
+    "pdf_field": "340",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Phone Fax Phone Fax | RIGHT: [IF ANY]",
+    "page": 14
+  },
+  {
+    "pdf_field": "341",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Mortgage Company Phone Homeowner\u2019s/Condo Association | RIGHT: [IF ANY] Phone",
+    "page": 14
+  },
+  {
+    "pdf_field": "342",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Mortgage Company Phone Homeowner\u2019s/Condo Association [IF ANY]",
+    "page": 14
+  },
+  {
+    "pdf_field": "343",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "344",
+    "field_type": "/Sig",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "345",
+    "field_type": "/Sig",
+    "neighbor_text": "ABOVE: DATE OF ACCEPTANCE",
+    "page": 14
+  },
+  {
+    "pdf_field": "346",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "347",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Print Seller(s) Name(s) [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "348",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address | ABOVE: [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "349",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "350",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: City, State, Zip [REQUIRED]",
+    "page": 14
+  },
+  {
+    "pdf_field": "351",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: FOR INFORMATION ONLY",
+    "page": 14
+  },
+  {
+    "pdf_field": "52",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Closing [CHECK OR ENUMERATE APPLICABLE ITEMS] Refrigerator(s)   Electronic / Media Air Filter(s)  All Window Treatments & Hardware  Above Ground Pool",
+    "page": 2
+  },
+  {
+    "pdf_field": "352",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: FOR INFORMATION ONLY",
+    "page": 14
+  },
+  {
+    "pdf_field": "353",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "354",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "355",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "356",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "357",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "358",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "359",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "360",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "361",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "362",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "363",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "364",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "365",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "366",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "367",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "368",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "369",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: [IF ANY] Phone",
+    "page": 14
+  },
+  {
+    "pdf_field": "370",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: [IF ANY] Phone",
+    "page": 14
+  },
+  {
+    "pdf_field": "371",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: This offer was presented to Seller on  , 20   at   :   a.m. / p.m.",
+    "page": 14
+  },
+  {
+    "pdf_field": "372",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "373",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "374",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "375",
+    "field_type": "/Btn",
+    "neighbor_text": "",
+    "page": 14
+  },
+  {
+    "pdf_field": "376",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller Rejection: and rejected on  , 20   at   :   a.m. / p.m. | RIGHT: ____ ____",
+    "page": 14
+  },
+  {
+    "pdf_field": "377",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller Rejection: and rejected on  , 20   at   :   a.m. / p.m. This offer was presented to Seller on  , 20   at   :   a.m. / p.m. | RIGHT: ____ ____ [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "378",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: This offer was presented to Seller on  , 20   at   :   a.m. / p.m. | RIGHT: ____ ____ [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "379",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: This offer was presented to Seller on  , 20   at   :   a.m. / p.m. | RIGHT: ____ ____ [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "380",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: ____ ____ [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "381",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: ____ [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "382",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ____ | RIGHT: [SELLER INITIALS]",
+    "page": 14
+  },
+  {
+    "pdf_field": "264",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Owned, but subject to a financing agreement with remaining payment(s) of $   which shall be: \uf071 Paid in full by Seller not later than Closing, or | ABOVE: \uf071 Owned by Seller with no further financial obligations; | RIGHT: \uf071 Assumed by Buyer;",
+    "page": 12
+  },
+  {
+    "pdf_field": "2641",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: \uf071 Assumed by Buyer;",
+    "page": 12
+  },
+  {
+    "pdf_field": "have a business",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  },
+  {
+    "pdf_field": "Date",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: LLC",
+    "page": 15
+  },
+  {
+    "pdf_field": "Date_2",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  },
+  {
+    "pdf_field": "Unit",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  },
+  {
+    "pdf_field": "City",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  },
+  {
+    "pdf_field": "State",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  },
+  {
+    "pdf_field": "Zip",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 15
+  }
+]

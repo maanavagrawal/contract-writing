@@ -159,36 +159,47 @@ def build_context(fields_dict: dict[str, Any], agent_dict: dict[str, Any]) -> di
     ctx["lease_end_month_day"] = md
     ctx["lease_end_year_2digit"] = yy
 
-    # Net rent defaults to monthly rent when blank.
-    if not ctx.get("net_monthly_rent"):
-        ctx["net_monthly_rent"] = ctx.get("monthly_rent") or ""
+    # Defaults are gated on transaction_type to prevent cross-type leaks.
+    # Before this gate (2026-05-10 incident), sale-side defaults like
+    # `loan_percent_of_price=80` and `tax_proration_percent=105` fired on
+    # every deal — including leases — and rendered into whatever fields the
+    # template happened to map there. Result: lease PDFs showed "80% loan,
+    # 30-year amortization, 105% tax proration" with no opt-out.
+    # Strict gate: defaults only when transaction_type matches.
+    tx_type = (ctx.get("transaction_type") or "").lower()
 
-    # Sensible defaults for the Tenant Rep boilerplate.
-    if not ctx.get("protection_period_days"):
-        ctx["protection_period_days"] = "30"
-    if not ctx.get("early_termination_fee"):
-        ctx["early_termination_fee"] = "$0"
-    if not ctx.get("retainer"):
-        ctx["retainer"] = "$0"
+    if tx_type == "lease":
+        # Net rent defaults to monthly rent when blank.
+        if not ctx.get("net_monthly_rent"):
+            ctx["net_monthly_rent"] = ctx.get("monthly_rent") or ""
 
-    # ---- Multi-Board sale defaults ----
-    if not ctx.get("earnest_business_days"):
-        ctx["earnest_business_days"] = "5"
-    if not ctx.get("loan_type"):
-        ctx["loan_type"] = "conventional"
-    if not ctx.get("loan_rate_type"):
-        ctx["loan_rate_type"] = "fixed"
-    if not ctx.get("loan_percent_of_price"):
-        ctx["loan_percent_of_price"] = "80"
-    if not ctx.get("loan_amortization_years"):
-        ctx["loan_amortization_years"] = "30"
-    if not ctx.get("loan_max_points"):
-        ctx["loan_max_points"] = "1"
-    if not ctx.get("tax_proration_percent"):
-        # Cook County standard is 110%; elsewhere often 105%.
-        ctx["tax_proration_percent"] = "110" if (ctx.get("county") or "").lower().startswith("cook") else "105"
-    if not ctx.get("escrowee"):
-        ctx["escrowee"] = "seller"
+        # Sensible defaults for the Tenant Rep boilerplate.
+        if not ctx.get("protection_period_days"):
+            ctx["protection_period_days"] = "30"
+        if not ctx.get("early_termination_fee"):
+            ctx["early_termination_fee"] = "$0"
+        if not ctx.get("retainer"):
+            ctx["retainer"] = "$0"
+
+    if tx_type == "sale":
+        # ---- Multi-Board sale defaults ----
+        if not ctx.get("earnest_business_days"):
+            ctx["earnest_business_days"] = "5"
+        if not ctx.get("loan_type"):
+            ctx["loan_type"] = "conventional"
+        if not ctx.get("loan_rate_type"):
+            ctx["loan_rate_type"] = "fixed"
+        if not ctx.get("loan_percent_of_price"):
+            ctx["loan_percent_of_price"] = "80"
+        if not ctx.get("loan_amortization_years"):
+            ctx["loan_amortization_years"] = "30"
+        if not ctx.get("loan_max_points"):
+            ctx["loan_max_points"] = "1"
+        if not ctx.get("tax_proration_percent"):
+            # Cook County standard is 110%; elsewhere often 105%.
+            ctx["tax_proration_percent"] = "110" if (ctx.get("county") or "").lower().startswith("cook") else "105"
+        if not ctx.get("escrowee"):
+            ctx["escrowee"] = "seller"
 
     # Buyer/seller name joins for the contract.
     seller_names = ctx.get("seller_names") or []

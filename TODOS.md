@@ -135,6 +135,42 @@ and is mapping-agnostic. The mapping page composes it with its own state.
 
 ---
 
+## Lease/sale template mismatch warning at generate time
+
+**What:** Detect when the extracted `transaction_type` doesn't match the likely intent of the template being filled, and surface a warning before/after generate. Heuristic: scan the mapping JSON's values — if it references `{purchase_price}`, `{loan_*}`, `{earnest_money}`, the template is sale-leaning; if it references `{monthly_rent}`, `{lease_start}`, `{lease_end}`, it's lease-leaning. Compare against `fields.transaction_type` and toast the mismatch.
+
+**Why:** Real user incident on 2026-05-10. User uploaded Multi-Board 8.0 (sale contract) and typed lease notes. Extraction correctly identified `transaction_type=lease`. Generate produced a "mostly empty" PDF because the lease data has no home in the sale form. User read "mostly empty + a few hardcoded numbers" as "the app is broken." A pre-generate warning ("This template fills sale fields but your data is a lease — most fields will be blank, generate anyway?") prevents the confusion.
+
+**Pros:** Catches a real user-confusion mode before it manifests as "the app doesn't work." ~1-2 hours. Surfaces the implicit knowledge that templates have a transaction-type affinity.
+
+**Cons:** Heuristic is approximate; some templates legitimately fill both kinds of fields. False positive warnings will train users to dismiss them.
+
+**Context:** This is upstream of the sale-defaults gate fix (which only handles the leaked-defaults symptom, not the root user confusion). Consider building this once user #2 or #3 hits the same pattern.
+
+**Depends on:** Sale-defaults gate fix shipped (so the leaked-numbers symptom is gone first).
+
+**Captured:** 2026-05-10 via /plan-eng-review (post sale-defaults bug investigation).
+
+---
+
+## AI mapping review UI for uploaded templates
+
+**What:** When a user uploads a custom PDF template, the AI proposes a mapping and the row gets `status='pending_review'` in the DB. But there's no UI to actually review the mapping before going live. Build a screen that lists every AcroForm field → proposed canonical path (or extra_field), lets the user edit/correct, and flips status to `'ready'` on save.
+
+**Why:** Without this, the user has zero visibility into mapping quality. A bad AI mapping (hallucinated paths, missed fields, wrong extras) produces a broken fill at generate time with no upstream warning. Trust in the upload flow erodes quickly when "most fields are blank" is the user's first impression of their own template.
+
+**Pros:** Unblocks real upload trust. Makes the `pending_review` status meaningful. Lets users fix the AI's mistakes once, then reuse the template forever. Visibility into "the AI saw 389 fields, mapped 47, made 12 extras, left 330 blank" is itself valuable.
+
+**Cons:** ~1-2 days of work (list UI + per-row editor + dropdown of valid canonical paths + extras editor + save flow). Multi-template-per-user means the UI also has to handle "which template am I editing." Adds a step users have to do post-upload.
+
+**Context:** Pillar 2 chunk 7 territory. The DB column + status enum already exist; this is purely frontend + a PATCH endpoint. Real user incident on 2026-05-10 made the gap visible: when generate fails, the user has no way to tell "is it bad notes, bad mapping, or bad template?"
+
+**Depends on:** Pillar 2 upload pipeline shipped (already done).
+
+**Captured:** 2026-05-10 via /plan-eng-review.
+
+---
+
 ## Redact magic-link plaintext from dev-mode logs
 
 **What:** In [backend/email_send.py:43-47](backend/email_send.py#L43-L47), the dev-mode fallback logs the full email body (including the magic-link URL with plaintext token) when `RESEND_API_KEY` is unset. If a production deploy ever boots without that env var (typo, accidental unset, post-rotation gap), Railway logs end up containing valid magic-link URLs that anyone with dashboard access can use to log in as that user during the 15-minute TTL.
