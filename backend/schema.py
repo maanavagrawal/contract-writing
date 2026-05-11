@@ -207,6 +207,28 @@ class MappingMeta(BaseModel):
     notes: str | None = None
 
 
+class BtnChoice(BaseModel):
+    """A conditional state-name lookup for an AcroForm /Btn field (checkbox
+    or radio group). At fill time the resolver reads ctx[canonical_path],
+    looks up the value in `choices`, and emits the matching state name —
+    e.g. ctx['property_type']='attached' + choices={'attached':'/On',
+    'detached':'/Off'} → '/On' written to the widget's /AS.
+
+    Why a table instead of a single (when_value, on_state) pair: real radio
+    groups have ONE pdf_field with N widget kids that each accept a different
+    /AP/N state. A single pair can only encode one (canonical_value → state)
+    mapping. The choices dict encodes the full N-way dispatch in one entry.
+    fill_pdf already routes each widget kid to /On or /Off based on whether
+    the resolved state matches its /AP/N — so we just need to produce the
+    right ONE state string per field.
+
+    When ctx[canonical_path] is None, missing, or not a key in `choices`,
+    the resolver returns '/Off' — never falsely fires a checkbox.
+    """
+    canonical_path: str = Field(description="Dotted ctx path. e.g. 'property_type' or 'template_extras.dual_agency'.")
+    choices: dict[str, str] = Field(description="Map from canonical value (str) to widget /AP/N state name (e.g. '/On' or '/Choice1').")
+
+
 class MappingFile(BaseModel):
     """Pydantic-validated shape of a mapping JSON. Loaded by generate.py and
     by the upcoming template-upload flow (which validates user-uploaded
@@ -219,9 +241,15 @@ class MappingFile(BaseModel):
     confidence < threshold. Those fields render BLANK in generated PDFs and
     the frontend surfaces them as "we weren't sure, fill these in by hand."
     Per-field shape: {pdf_field, proposed, confidence, kind}.
+
+    `fields` is a dict from pdf field name to either a string template
+    ("{property.address}") or a BtnChoice (conditional state lookup for
+    /Btn fields). Both shapes coexist in the same dict; the resolver
+    dispatches per type. Bundled canonical mappings on disk are all
+    string-only and continue to work unchanged.
     """
     meta: MappingMeta = Field(alias="_meta")
-    fields: dict[str, str]
+    fields: dict[str, str | BtnChoice]
     extra_fields: list[dict] = Field(default_factory=list)
     low_confidence: list[dict] = Field(default_factory=list)
 
@@ -312,3 +340,8 @@ class TemplateUploadResponse(BaseModel):
     mapping: dict                     # MappingFile.model_dump(by_alias=True)
     extra_fields: list[ExtraFieldDTO]
     field_count: int                  # how many AcroForm fields the AI saw
+    # Structural validation warnings — pruned /Btn proposals, low coverage,
+    # hallucinated paths. When status is "needs_attention" the frontend can
+    # show these so the user knows WHY the template was flagged. Empty list
+    # for clean uploads.
+    warnings: list[str] = Field(default_factory=list)

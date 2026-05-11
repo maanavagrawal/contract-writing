@@ -83,7 +83,7 @@ def _proposal_with_two_canonicals_and_one_extra() -> ProposedMapping:
 
 def test_proposal_translates_canonical_paths_to_template_strings():
     proposal = _proposal_with_two_canonicals_and_one_extra()
-    mapping, extras, unknown_paths, low_conf = proposal_to_mapping_file(
+    mapping, extras, unknown_paths, low_conf, btn_warns = proposal_to_mapping_file(
         proposal, title="Test", source_pdf_filename="abc.pdf",
         filled_filename="test_filled.pdf",
     )
@@ -95,13 +95,14 @@ def test_proposal_translates_canonical_paths_to_template_strings():
     assert extras[0].type == "money"
     assert unknown_paths == []
     assert low_conf == []
+    assert btn_warns == []
 
 
 def test_proposal_unmapped_field_renders_empty_string():
     proposal = ProposedMapping(fields=[
         ProposedField(pdf_field="MYSTERY", confidence=10),
     ])
-    mapping, _extras, _unknown, _low = proposal_to_mapping_file(
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert mapping.fields["MYSTERY"] == ""
@@ -118,7 +119,7 @@ def test_proposal_extra_field_type_defaults_to_text():
             confidence=10,
         ),
     ])
-    _, extras, _unknown, _low = proposal_to_mapping_file(
+    _, extras, _unknown, _low, _warns = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert extras[0].type == "text"
@@ -134,7 +135,7 @@ def test_proposal_unknown_canonical_path_is_demoted_to_unmapped():
         ProposedField(pdf_field="BAD", canonical_path="borrower.full_name", confidence=10),
         ProposedField(pdf_field="ALSO_BAD", canonical_path="totally_made_up", confidence=10),
     ])
-    mapping, extras, unknown_paths, _low = proposal_to_mapping_file(
+    mapping, extras, unknown_paths, _low, _warns = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert mapping.fields["GOOD"] == "{property.address}"
@@ -154,7 +155,7 @@ def test_proposal_computed_value_paths_are_allowed():
         ProposedField(pdf_field="COUNTY_TAIL", canonical_path="county_suffix", confidence=10),
         ProposedField(pdf_field="TENANT_1", canonical_path="tenant_1_name", confidence=10),
     ])
-    mapping, _extras, unknown_paths, _low = proposal_to_mapping_file(
+    mapping, _extras, unknown_paths, _low, _warns = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     assert mapping.fields["DATE_OF_SIGNING"] == "{today}"
@@ -172,7 +173,7 @@ def test_low_confidence_fields_are_blanked_and_surfaced():
         ProposedField(pdf_field="C", extra_field_name="weird", extra_field_type="text",
                       extra_field_description="x", confidence=3),  # low
     ])
-    mapping, extras, _unknown, low_conf = proposal_to_mapping_file(
+    mapping, extras, _unknown, low_conf, _warns = proposal_to_mapping_file(
         proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
     )
     # High confidence: mapped as normal
@@ -189,6 +190,416 @@ def test_low_confidence_fields_are_blanked_and_surfaced():
     assert by_field["B"]["kind"] == "canonical"
     assert by_field["C"]["proposed"] == "weird"
     assert by_field["C"]["kind"] == "extra"
+
+
+# ============================================================================
+# BtnChoice (autonomous /Btn fill: AI emits widget /AP/N states + canonical
+# value table; mapping carries them through to fill time)
+# ============================================================================
+#
+# Why: bundled mappings encode /Btn states via interpolate.py computed values
+# (property_type_attached_state etc.) — they only work for the exact PDFs we
+# hand-tuned against. On autonomously-mapped uploads, the AI doesn't know
+# which /AP/N keys the widget actually has, so the bundled fallback writes
+# "/On" and pdf_fill silently /Off-s it. BtnChoice fixes that by encoding
+# both the canonical value AND the literal state per widget.
+
+from backend.schema import BtnChoice as _BtnChoice
+
+
+def test_proposal_btn_choices_emits_btnchoice_mapping():
+    """A /Btn proposal with btn_choices emits a BtnChoice value, not a
+    string template. The choices dict carries the exact widget state names."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="PROP_TYPE_ATTACHED",
+            canonical_path="property_type",
+            btn_choices={"attached": "/On"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "PROP_TYPE_ATTACHED", "field_type": "/Btn",
+                    "neighbor_text": "Single Family Attached", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, _low, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    value = mapping.fields["PROP_TYPE_ATTACHED"]
+    assert isinstance(value, _BtnChoice)
+    assert value.canonical_path == "property_type"
+    assert value.choices == {"attached": "/On"}
+    assert btn_warns == []
+
+
+def test_proposal_btn_choices_radio_group_full_table():
+    """Real radio group: one field with multiple kids, multiple states.
+    The AI emits the full canonical_value → state table."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="ESCROWEE",
+            canonical_path="escrowee",
+            btn_choices={
+                "seller": "/Seller's Brokerage",
+                "buyer": "/Buyer's Brokerage",
+                "other": "/As otherwise agreed",
+            },
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "ESCROWEE", "field_type": "/Btn",
+                    "neighbor_text": "Escrowee", "page": 1,
+                    "states": ["/Off", "/Seller's Brokerage", "/Buyer's Brokerage",
+                               "/As otherwise agreed"]}]
+    mapping, _extras, _unknown, _low, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    value = mapping.fields["ESCROWEE"]
+    assert isinstance(value, _BtnChoice)
+    assert len(value.choices) == 3
+    assert btn_warns == []
+
+
+def test_proposal_btn_choices_unknown_canonical_value_pruned():
+    """AI emits a canonical value not in the Literal enum (e.g. 'multifamily'
+    for property_type which is attached|detached|multi_unit). That entry is
+    pruned and a warning is emitted. The valid entries survive."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="PROP_TYPE",
+            canonical_path="property_type",
+            btn_choices={"attached": "/On", "multifamily": "/On"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "PROP_TYPE", "field_type": "/Btn",
+                    "neighbor_text": "Property Type", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, _low, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    value = mapping.fields["PROP_TYPE"]
+    assert isinstance(value, _BtnChoice)
+    assert value.choices == {"attached": "/On"}  # 'multifamily' pruned
+    assert any("multifamily" in w for w in btn_warns)
+
+
+def test_proposal_btn_choices_unknown_widget_state_pruned():
+    """AI emits a state not in the widget's /AP/N (e.g. '/Yes' when widget
+    only accepts '/Off' and '/On'). That entry is pruned + warning emitted."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="DUAL_AGENCY",
+            canonical_path="property_type",  # using a Literal path for sanity
+            btn_choices={"attached": "/Yes"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "DUAL_AGENCY", "field_type": "/Btn",
+                    "neighbor_text": "Dual Agency", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # All choices invalid -> field blanked, surfaced as low-confidence so user
+    # knows to fill by hand.
+    assert mapping.fields["DUAL_AGENCY"] == ""
+    assert any(lc["pdf_field"] == "DUAL_AGENCY" for lc in low_conf)
+    assert any("/Yes" in w for w in btn_warns)
+
+
+def test_proposal_btn_choices_low_confidence_blanked():
+    """Low-confidence /Btn proposals get blanked AND surfaced, same as any
+    other low-confidence canonical proposal — wrong > blank on legal docs."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="PROP_TYPE",
+            canonical_path="property_type",
+            btn_choices={"attached": "/On"},
+            confidence=5,  # below threshold
+        ),
+    ])
+    field_descs = [{"pdf_field": "PROP_TYPE", "field_type": "/Btn",
+                    "neighbor_text": "Property Type", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, low_conf, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    assert mapping.fields["PROP_TYPE"] == ""
+    assert any(lc["pdf_field"] == "PROP_TYPE" for lc in low_conf)
+
+
+def test_proposal_btn_choices_with_extra_field_uses_template_extras_path():
+    """A single boolean checkbox without a canonical path (e.g. 'Dual Agency')
+    becomes a template_extras BtnChoice. Path is synthesized as
+    template_extras.<name>; choices are validated against widget states."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="DUAL_AGENCY",
+            extra_field_name="dual_agency",
+            extra_field_type="bool",
+            extra_field_description="Dual Agency applies — checked = true.",
+            btn_choices={"true": "/On"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "DUAL_AGENCY", "field_type": "/Btn",
+                    "neighbor_text": "Dual Agency", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    value = mapping.fields["DUAL_AGENCY"]
+    assert isinstance(value, _BtnChoice)
+    assert value.canonical_path == "template_extras.dual_agency"
+    assert value.choices == {"true": "/On"}
+    # Extra field still registered so frontend asks the user for the value
+    assert any(e.name == "dual_agency" for e in extras)
+
+
+def test_proposal_btn_choices_omitted_falls_back_to_string_template():
+    """A /Btn proposal WITHOUT btn_choices, AND without field_descriptions
+    (test-only path) emits a string template — same as it did before this
+    feature landed. Keeps backward-compat with the canonical mappings that
+    use computed state values like {property_type_attached_state}.
+
+    In production we ALWAYS pass field_descriptions, which triggers the
+    different test below — a /Btn field missing btn_choices gets blanked +
+    surfaced rather than emitting a string template (which would corrupt
+    the checkbox's /V at fill time)."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="SOME_BTN",
+            canonical_path="property_type",
+            btn_choices=None,
+            confidence=10,
+        ),
+    ])
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    assert mapping.fields["SOME_BTN"] == "{property_type}"
+
+
+def test_proposal_btn_choices_on_tx_field_does_not_corrupt_text_value():
+    """REGRESSION (code review 2026-05-10): if the AI emits btn_choices on a
+    /Tx field (prompt confusion or prompt injection via uploaded-PDF neighbor
+    text), proposal_to_mapping_file must NOT route it through BtnChoice.
+    Otherwise resolve_btn_choice would compare the resolved address string
+    against the choices keys, miss, and write '/Off' to a text field's /V
+    — silently blanking the customer's address."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="ADDR_LINE",
+            canonical_path="property.address",
+            btn_choices={"221 W Hubbard": "/On"},  # nonsense for a /Tx
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "ADDR_LINE", "field_type": "/Tx",
+                    "neighbor_text": "Address", "page": 1}]
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # Must emit a string template, NOT a BtnChoice. The btn_choices is
+    # silently discarded because field_type is /Tx.
+    assert mapping.fields["ADDR_LINE"] == "{property.address}"
+    assert not isinstance(mapping.fields["ADDR_LINE"], _BtnChoice)
+
+
+def test_proposal_btn_choices_on_ch_field_does_not_route_through_btnchoice():
+    """REGRESSION (2026-05-10): /Ch (dropdown) fields take a string value
+    written to /V, NOT a state name. If the AI emits btn_choices on a /Ch
+    field, routing through BtnChoice would write '/Off' or '/Choice1' into
+    the dropdown's /V — corrupting the dropdown's selection. Only /Btn
+    fields use BtnChoice; /Ch falls through to the string-template path."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="DROPDOWN",
+            canonical_path="property_type",
+            btn_choices={"attached": "/Choice1"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "DROPDOWN", "field_type": "/Ch",
+                    "neighbor_text": "Property Type", "page": 1,
+                    "states": ["/Choice1", "/Choice2", "/Choice3"]}]
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # Must NOT be a BtnChoice. Falls through to string template.
+    assert mapping.fields["DROPDOWN"] == "{property_type}"
+    assert not isinstance(mapping.fields["DROPDOWN"], _BtnChoice)
+
+
+def test_proposal_btn_choices_all_off_is_rejected_as_silent_noop():
+    """REGRESSION (adversarial review 2026-05-10): if the AI sanitizes to a
+    BtnChoice where EVERY canonical value maps to '/Off', the checkbox will
+    never fire regardless of ctx. That's a silent no-op — observationally
+    identical to no mapping at all, but without the low_confidence surface
+    that tells the user to fill manually. _sanitize_btn_choices rejects the
+    whole table so the caller blanks + surfaces it."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="DOOMED",
+            canonical_path="property_type",
+            btn_choices={"attached": "/Off", "detached": "/Off", "multi_unit": "/Off"},
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "DOOMED", "field_type": "/Btn",
+                    "neighbor_text": "", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # All-/Off table rejected → field blanked + surfaced.
+    assert mapping.fields["DOOMED"] == ""
+    assert any(lc["pdf_field"] == "DOOMED" for lc in low_conf)
+    assert any("never fire" in w or "/Off" in w for w in btn_warns)
+
+
+def test_proposal_empty_widget_states_rejects_all_proposals():
+    """REGRESSION (adversarial review 2026-05-10): empty widget_states list
+    (field has /Btn type but no /AP/N keys extracted, OR field is missing
+    from field_descriptions) used to silently disable widget-state validation,
+    accepting any AI proposal. Now we reject every state — better to blank
+    a field we can't fill correctly than to write a guess."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="MYSTERY_BTN",
+            canonical_path="property_type",
+            btn_choices={"attached": "/On"},
+            confidence=10,
+        ),
+    ])
+    # Note: states is empty list. Production case: field listed in
+    # field_descriptions but pypdf couldn't extract /AP/N (corrupt PDF).
+    field_descs = [{"pdf_field": "MYSTERY_BTN", "field_type": "/Btn",
+                    "neighbor_text": "", "page": 1, "states": []}]
+    mapping, _extras, _unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # No widget states available → can't trust AI's '/On' → blanked.
+    assert mapping.fields["MYSTERY_BTN"] == ""
+    assert any(lc["pdf_field"] == "MYSTERY_BTN" for lc in low_conf)
+    assert any("/AP/N" in w or "not in widget" in w for w in btn_warns)
+
+
+def test_mapping_value_is_blank_treats_all_off_btnchoice_as_blank():
+    """REGRESSION: a hand-edited mapping JSON could sneak in an all-/Off
+    BtnChoice (the sanitizer rejects it on the upload path, but loaded
+    JSONs aren't re-sanitized). validate_mapping_structure's coverage_low
+    check should count those as blank so the warning fires correctly."""
+    from backend.templates import _mapping_value_is_blank
+
+    assert _mapping_value_is_blank("") is True
+    assert _mapping_value_is_blank("   ") is True
+    assert _mapping_value_is_blank("{property.address}") is False
+    # Normal BtnChoice with a real /On state: not blank.
+    bc_real = _BtnChoice(canonical_path="property_type",
+                         choices={"attached": "/On"})
+    assert _mapping_value_is_blank(bc_real) is False
+    # All-/Off BtnChoice: counts as blank.
+    bc_dead = _BtnChoice(canonical_path="property_type",
+                         choices={"attached": "/Off", "detached": "/Off"})
+    assert _mapping_value_is_blank(bc_dead) is True
+    # Empty-choices BtnChoice: counts as blank.
+    bc_empty = _BtnChoice(canonical_path="property_type", choices={})
+    assert _mapping_value_is_blank(bc_empty) is True
+
+
+def test_proposal_btn_field_without_btn_choices_is_blanked_and_surfaced():
+    """REGRESSION (code review 2026-05-10): a /Btn field with a canonical_path
+    but no btn_choices used to fall through to a string template like
+    '{property_type}', which interpolates to 'attached' and gets written as
+    text to the checkbox's /V — leaving it visually unchecked. Now we blank
+    it + surface it as low-confidence so the user knows to fill manually."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="BTN_NO_CHOICES",
+            canonical_path="property_type",
+            btn_choices=None,  # AI forgot to emit btn_choices
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "BTN_NO_CHOICES", "field_type": "/Btn",
+                    "neighbor_text": "Property Type", "page": 1,
+                    "states": ["/Off", "/On"]}]
+    mapping, _extras, _unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    assert mapping.fields["BTN_NO_CHOICES"] == ""
+    assert any(lc["pdf_field"] == "BTN_NO_CHOICES" for lc in low_conf)
+    assert any("btn_choices" in w for w in btn_warns)
+
+
+def test_validate_mapping_structure_handles_btnchoice_values_without_crashing():
+    """REGRESSION (outside-voice review F4): switching mapping.fields to
+    dict[str, str | BtnChoice] broke validate_mapping_structure's
+    `v.strip()` blank-counter. Guard via isinstance(v, str). A BtnChoice
+    with non-empty choices counts as 'not blank'."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="TXT", canonical_path="property.address", confidence=10),
+        ProposedField(
+            pdf_field="BTN",
+            canonical_path="property_type",
+            btn_choices={"attached": "/On"},
+            confidence=10,
+        ),
+        ProposedField(pdf_field="BLANK", confidence=10),  # nothing -> ""
+    ])
+    field_descs = [
+        {"pdf_field": "TXT", "field_type": "/Tx", "neighbor_text": "", "page": 1},
+        {"pdf_field": "BTN", "field_type": "/Btn", "neighbor_text": "", "page": 1,
+         "states": ["/Off", "/On"]},
+        {"pdf_field": "BLANK", "field_type": "/Tx", "neighbor_text": "", "page": 1},
+    ]
+    mapping, _extras, unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    # Must not crash — that's the real test.
+    warnings = templates_mod.validate_mapping_structure(
+        mapping, field_descs, unknown, low_conf, btn_warns
+    )
+    # 1/3 blank = 33% < 50% so no coverage_low warning expected.
+    assert all("coverage_low" not in w for w in warnings)
+
+
+def test_validate_mapping_structure_surfaces_btn_warnings():
+    """When the sanitizer pruned /Btn choices, validate_mapping_structure
+    surfaces a btn_choice_mismatches warning so the template is flagged
+    needs_attention at upload time."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(
+            pdf_field="BTN",
+            canonical_path="property_type",
+            btn_choices={"multifamily": "/On"},  # invalid canonical value
+            confidence=10,
+        ),
+    ])
+    field_descs = [{"pdf_field": "BTN", "field_type": "/Btn", "neighbor_text": "",
+                    "page": 1, "states": ["/Off", "/On"]}]
+    mapping, _e, unknown, low_conf, btn_warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+        field_descriptions=field_descs,
+    )
+    assert btn_warns  # something got pruned
+    warnings = templates_mod.validate_mapping_structure(
+        mapping, field_descs, unknown, low_conf, btn_warns
+    )
+    assert any("btn_choice_mismatches" in w for w in warnings)
 
 
 # ---- API endpoint tests (real Postgres + endpoint, AI mocked) ----

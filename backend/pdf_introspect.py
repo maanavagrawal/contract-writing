@@ -35,6 +35,24 @@ class FieldInfo:
     leaf_obj: Any                   # the underlying pypdf object so callers can mutate /V
     widgets: list[WidgetInfo] = field(default_factory=list)
 
+    @property
+    def states(self) -> list[str]:
+        """Union of every widget's /AP/N keys, deduped, preserving first-seen order.
+        For a checkbox: typically ['/Off', '/On']. For a radio group: the union
+        of each kid's distinct state, e.g. ['/Off', '/Choice1', '/Choice2'].
+        Empty for /Tx, /Sig, and widgets without an appearance dictionary.
+
+        Used to tell the AI which literal state names a /Btn field accepts on
+        THIS specific PDF — without this, the AI guesses '/On' and the fill
+        engine silently writes '/Off' when the actual /AP/N key is something
+        else like '/Yes' or '/Choice1'."""
+        seen: list[str] = []
+        for w in self.widgets:
+            for s in w.states:
+                if s not in seen:
+                    seen.append(s)
+        return seen
+
 
 def _deref(obj: Any) -> Any:
     """Resolve IndirectObject → real object once. pypdf already does this lazily

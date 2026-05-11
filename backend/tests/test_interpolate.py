@@ -124,3 +124,132 @@ def test_explicit_values_not_overwritten_by_defaults():
     assert ctx["loan_percent_of_price"] == "75"
     assert ctx["loan_amortization_years"] == "15"
     assert ctx["tax_proration_percent"] == "100"
+
+
+# ============================================================================
+# BtnChoice + interpolate_mapping (autonomous /Btn fill via AI-generated tables)
+# ============================================================================
+#
+# Background: bundled canonical mappings encode /Btn state names via computed
+# values like {property_type_attached_state}. That works only because we wrote
+# those mappings by hand against a specific PDF. For autonomously-mapped user
+# uploads we don't know the widget /AP/N keys until upload time, so the AI
+# emits a BtnChoice table that says "for ctx[canonical_path] == X, write
+# state Y". interpolate_mapping resolves both shapes (string templates AND
+# BtnChoice) into a flat dict for fill_pdf.
+
+from backend.interpolate import interpolate_mapping, resolve_btn_choice
+from backend.schema import BtnChoice
+
+
+def test_btnchoice_resolves_to_matching_state():
+    """ctx[canonical_path] matches a key in choices -> emit that state."""
+    bc = BtnChoice(
+        canonical_path="property_type",
+        choices={"attached": "/On", "detached": "/Off", "multi_unit": "/Off"},
+    )
+    assert resolve_btn_choice({"property_type": "attached"}, bc) == "/On"
+
+
+def test_btnchoice_resolves_to_off_when_value_not_in_choices():
+    """If ctx[path] isn't in choices, emit /Off — never falsely fire a widget."""
+    bc = BtnChoice(
+        canonical_path="property_type",
+        choices={"attached": "/On"},
+    )
+    assert resolve_btn_choice({"property_type": "detached"}, bc) == "/Off"
+
+
+def test_btnchoice_resolves_to_off_when_ctx_value_missing():
+    """Missing key or None value -> /Off."""
+    bc = BtnChoice(
+        canonical_path="property_type",
+        choices={"attached": "/On"},
+    )
+    assert resolve_btn_choice({}, bc) == "/Off"
+    assert resolve_btn_choice({"property_type": None}, bc) == "/Off"
+
+
+def test_btnchoice_handles_radio_group_with_multiple_states():
+    """Real radio group: one field, N kids with N different /AP/N states.
+    Each canonical value resolves to its own widget state."""
+    bc = BtnChoice(
+        canonical_path="escrowee",
+        choices={
+            "seller": "/Seller's Brokerage",
+            "buyer": "/Buyer's Brokerage",
+            "other": "/As otherwise agreed",
+        },
+    )
+    assert resolve_btn_choice({"escrowee": "seller"}, bc) == "/Seller's Brokerage"
+    assert resolve_btn_choice({"escrowee": "buyer"}, bc) == "/Buyer's Brokerage"
+    assert resolve_btn_choice({"escrowee": "other"}, bc) == "/As otherwise agreed"
+
+
+def test_btnchoice_handles_bool_canonical_value():
+    """A canonical bool (e.g. template_extras.dual_agency) lowercases to
+    'true'/'false' for the choices lookup."""
+    bc = BtnChoice(
+        canonical_path="template_extras.dual_agency",
+        choices={"true": "/On"},
+    )
+    ctx = {"template_extras": {"dual_agency": True}}
+    assert resolve_btn_choice(ctx, bc) == "/On"
+    ctx_false = {"template_extras": {"dual_agency": False}}
+    assert resolve_btn_choice(ctx_false, bc) == "/Off"
+
+
+def test_btnchoice_integer_float_round_trip_normalization():
+    """REGRESSION (adversarial review 2026-05-10): a template_extras int value
+    can round-trip through JSON as a float (1 → 1.0). AI uses string keys like
+    '1' in choices. Without normalization, str(1.0)='1.0' wouldn't match '1'
+    → silent /Off. Normalize int-valued floats to their integer string form."""
+    bc = BtnChoice(canonical_path="num_kids", choices={"1": "/On", "2": "/Off"})
+    assert resolve_btn_choice({"num_kids": 1}, bc) == "/On"
+    assert resolve_btn_choice({"num_kids": 1.0}, bc) == "/On"  # the regression
+    assert resolve_btn_choice({"num_kids": 2}, bc) == "/Off"
+    # Non-integer float still uses str() — '1.5' won't match '1' or '2'.
+    assert resolve_btn_choice({"num_kids": 1.5}, bc) == "/Off"
+
+
+def test_interpolate_mapping_dispatches_str_and_btnchoice():
+    """interpolate_mapping is the entry point generate.py uses. It must
+    correctly dispatch between string templates and BtnChoice."""
+    ctx = {
+        "property": {"address": "221 W Hubbard"},
+        "property_type": "attached",
+    }
+    fields: dict[str, object] = {
+        "FIELD_A": "{property.address}",
+        "FIELD_B": BtnChoice(
+            canonical_path="property_type",
+            choices={"attached": "/On"},
+        ),
+        "FIELD_C": "literal string passes through",
+    }
+    rendered = interpolate_mapping(fields, ctx)
+    assert rendered["FIELD_A"] == "221 W Hubbard"
+    assert rendered["FIELD_B"] == "/On"
+    assert rendered["FIELD_C"] == "literal string passes through"
+
+
+def test_interpolate_mapping_preserves_existing_string_only_mappings():
+    """REGRESSION: bundled canonical mappings (multiboard.json etc.) are
+    pure dict[str, str]. interpolate_mapping must return identical results
+    for them as the old `dict comprehension` approach did."""
+    ctx = {
+        "property": {"address": "221 W Hubbard"},
+        "property_type_attached_state": "/On",
+        "purchase_price": "725000",
+    }
+    fields: dict[str, object] = {
+        "ADDR": "{property.address}",
+        "TYPE_BOX": "{property_type_attached_state}",
+        "PRICE": "{purchase_price|currency}",
+        "EMPTY": "",
+    }
+    rendered = interpolate_mapping(fields, ctx)
+    assert rendered["ADDR"] == "221 W Hubbard"
+    assert rendered["TYPE_BOX"] == "/On"
+    assert rendered["PRICE"] == "$725,000"
+    assert rendered["EMPTY"] == ""

@@ -7,14 +7,33 @@ Pattern: {path.to.field} or {path.to.field|filter}
   - filters available: date, currency, upper, join
 
 Why not Jinja: one dependency, one syntax to teach, ~60 lines. The mapping
-JSONs only need primitive substitution; if we ever need conditionals, we add
-computed fields to the context instead of growing the template language.
+JSONs only need primitive substitution.
+
+mapping.fields value types
+==========================
+A mapping value can be one of two shapes — interpolate_mapping() dispatches:
+
+  "{property.address}"   string template: walks ctx via _resolve + filters.
+  "/Choice1"             literal AcroForm state name: passed through unchanged
+                          for fill_pdf to write to /AS.
+  BtnChoice(...)         conditional state lookup. Used for /Btn fields on
+                          autonomously-mapped templates where the widget's
+                          exact /AP/N keys aren't '/On'. Resolves to the
+                          state name matching ctx[canonical_path], or '/Off'
+                          when missing/unknown.
+
+Conditionals deliberately live in BtnChoice rather than in the template
+language: they're domain-specific (only /Btn fields need them) and we want
+schema-level validation that the keys/values match the canonical Literal
+enum + the widget's /AP/N keys at upload time, not at fill time.
 """
 from __future__ import annotations
 
 import re
 from datetime import date, datetime
 from typing import Any
+
+from .schema import BtnChoice
 
 _PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_.]*)(?:\|([a-zA-Z_]+))?\}")
 
@@ -270,3 +289,58 @@ def build_context(fields_dict: dict[str, Any], agent_dict: dict[str, Any]) -> di
     ctx["statutory_state"] = "/Has"
 
     return ctx
+
+
+def resolve_btn_choice(ctx: dict[str, Any], bc: BtnChoice) -> str:
+    """Resolve a BtnChoice into a literal /Btn state name for fill_pdf.
+
+    Algorithm:
+      1. Look up ctx[canonical_path] via _resolve (handles dotted paths).
+      2. Normalize the value to a string key (booleans → "true"/"false";
+         everything else → str(value)).
+      3. If the key is in bc.choices, return that state name.
+      4. Otherwise return "/Off" — never falsely fire a widget.
+
+    The "/Off" fallback handles three cases identically: missing ctx key,
+    None value, and value not in the choices table. All three should leave
+    the widget unchecked. fill_pdf already handles a "/Off" string by
+    writing /Off to every widget kid's /AS.
+    """
+    value = _resolve(ctx, bc.canonical_path)
+    if value is None:
+        return "/Off"
+    if isinstance(value, bool):
+        # bool is a subclass of int — check first so True doesn't fall into
+        # the float branch as 1.0. Lowercase string form so mapping JSONs use
+        # the natural shape {"true": "/On", "false": "/Off"}.
+        key = "true" if value else "false"
+    elif isinstance(value, float) and value.is_integer():
+        # 1.0 → "1" not "1.0" so AI-friendly integer keys still match when
+        # a value round-trips through JSON as a float (common in template_extras).
+        key = str(int(value))
+    else:
+        key = str(value)
+    return bc.choices.get(key, "/Off")
+
+
+def interpolate_mapping(
+    mapping_fields: dict[str, str | BtnChoice],
+    ctx: dict[str, Any],
+) -> dict[str, str]:
+    """Render every mapping value against ctx, returning a flat
+    {pdf_field: rendered_string} dict for fill_pdf.
+
+    Dispatches per value type:
+      - str → interpolate() (existing string-template path)
+      - BtnChoice → resolve_btn_choice() (conditional state lookup)
+
+    This is the single entry point generate.py uses; it keeps both rendering
+    paths in one module and gives tests a clean unit boundary.
+    """
+    out: dict[str, str] = {}
+    for pdf_field, value in mapping_fields.items():
+        if isinstance(value, BtnChoice):
+            out[pdf_field] = resolve_btn_choice(ctx, value)
+        else:
+            out[pdf_field] = interpolate(value, ctx)
+    return out

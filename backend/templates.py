@@ -40,7 +40,7 @@ from .models import (
     now_iso,
 )
 from .pdf_introspect import extract_neighbor_text, walk_fields
-from .schema import MappingFile, MappingMeta
+from .schema import BtnChoice, MappingFile, MappingMeta
 
 MODEL = "gpt-5"
 
@@ -91,6 +91,18 @@ class ProposedField(BaseModel):
     extra_field_type: str | None = Field(None, description="One of 'text','money','date','number','bool','list_str'. Required when extra_field_name is set.")
     extra_field_description: str | None = Field(None, description="One-line description used in the extraction prompt later.")
     confidence: int = Field(5, ge=1, le=10, description="1-10 confidence in this mapping. Use 9-10 only when the label is unambiguous (e.g. 'Buyer Name' next to a /Tx field). Use 1-4 when guessing from sparse or visual-only signal.")
+    # /Btn-specific: when this field is a checkbox/radio AND a canonical path
+    # exists, the AI emits btn_choices mapping each canonical_path value to the
+    # widget's exact /AP/N state name. Example: for property_type checkbox
+    # 'Single Family Attached' with widget states ['/Off','/On'], emit
+    # btn_choices={"attached": "/On"} (or {"attached": "/On", "detached": "/Off",
+    # "multi_unit": "/Off"} for the same field if it were a 3-way radio). The
+    # interpolator resolves ctx[canonical_path] → choices[value] → state at
+    # fill time. Defaults to '/Off' when value is missing or unknown.
+    btn_choices: dict[str, str] | None = Field(
+        None,
+        description="For /Btn fields with a canonical_path: dict from canonical value (the value of ctx[canonical_path] as a string) to the widget's literal /AP/N state name. Omit for non-/Btn fields or when canonical_path is null.",
+    )
 
 
 class ProposedMapping(BaseModel):
@@ -137,6 +149,11 @@ For each PDF field you'll see:
     | ABOVE: <line just above> | RIGHT: <words to the right on the same line>"
     (sections are omitted when empty)
   - the field type (/Tx text, /Btn checkbox or radio, /Ch dropdown, /Sig signature)
+  - states (ONLY for /Btn and /Ch): the literal /AP/N appearance-state names
+    the widget will accept. A checkbox typically shows ["/Off", "/On"]; a
+    radio group shows ["/Off", "/Choice1", "/Choice2", ...]. THESE ARE PER-PDF
+    AND YOU MUST USE THE EXACT STRINGS GIVEN — do NOT invent "/On" if the
+    list says ["/Off", "/Yes"]. See the btn_choices field below.
   - for some fields with empty neighbor_text: an attached cropped image of the
     field's surrounding area on the PDF page. Use the image to read labels
     that text extraction missed (column headers, table rows, hand-tagged
@@ -170,11 +187,34 @@ Rules:
   - Prefer canonical paths when the neighbor text obviously matches a known
     field. "Tenant Email" → tenant_or_buyer_email. "Lease Start" → lease_start.
   - For radio groups (/Btn with multiple states) and dropdowns (/Ch), still
-    map to canonical_path when sensible. The system handles state names later.
+    map to canonical_path when sensible.
   - Date fields go to canonical date paths when obvious; otherwise extra_field
     with type=date.
   - Money fields with type=money. Counts/numbers with type=number.
   - When in doubt between A and B, prefer B (template-specific).
+
+For /Btn fields ONLY:
+  - When you set canonical_path on a /Btn field, you MUST ALSO emit btn_choices.
+    Without btn_choices, the system has no way to know which state name to
+    write to the widget — the result is a permanently blank checkbox.
+  - btn_choices is a dict mapping canonical VALUES to the widget's exact /AP/N
+    state names from the `states` field. Example: if canonical_path is
+    "property_type" (enum: attached|detached|multi_unit) and this is the
+    "Single Family Attached" checkbox with states ["/Off","/On"], emit:
+      btn_choices = {"attached": "/On"}
+    The system fills /Off when the canonical value doesn't match any key.
+  - For a true RADIO group (one field, multiple kids, multiple states), enumerate
+    every (canonical_value → state) the field encodes. Example: escrowee radio
+    with states ["/Off","/Seller's Brokerage","/Buyer's Brokerage","/As otherwise agreed"]
+    and canonical_path="escrowee" (enum: seller|buyer|other) gets:
+      btn_choices = {"seller": "/Seller's Brokerage",
+                     "buyer": "/Buyer's Brokerage",
+                     "other": "/As otherwise agreed"}
+  - For a TEMPLATE_EXTRAS boolean (a single checkbox without a canonical path),
+    use canonical_path = "template_extras.<name>" and
+    btn_choices = {"true": "/On"} (or the actual on-state from `states`).
+  - Every value in btn_choices MUST be one of the strings in `states`. The
+    system rejects mismatches and falls back to /Off. Do not invent state names.
 
 Confidence (1-10): score every field. This drives a downstream gate that
 BLANKS fields with confidence < 7 at fill time so wrong values don't ship
@@ -315,6 +355,14 @@ def collect_field_descriptions(reader: PdfReader) -> list[dict]:
     useless 'Buyer Initial Seller Initial Address:' neighbor text. Pick
     the LARGEST widget instead — primary content fields are almost always
     much wider/taller than footer reprints.
+
+    For /Btn and /Ch fields we ALSO emit the widget's /AP/N state names so
+    the AI can pick the literal state per-PDF instead of guessing '/On'.
+    Without this, every uploaded PDF whose checkboxes don't use exactly
+    '/On' (revisions, vendor exports, scanned-then-re-AcroForm'd templates)
+    fills blank because pdf_fill writes /Off when the proposed state isn't
+    in the widget's /AP/N. Skipped on /Tx and /Sig — those don't have
+    appearance states.
     """
     out: list[dict] = []
     for fi in walk_fields(reader):
@@ -322,12 +370,17 @@ def collect_field_descriptions(reader: PdfReader) -> list[dict]:
         neighbor = ""
         if primary and primary.rect and primary.page > 0:
             neighbor = extract_neighbor_text(reader, primary.page, primary.rect)
-        out.append({
+        entry: dict = {
             "pdf_field": fi.dotted_name,
             "field_type": fi.field_type,
             "neighbor_text": neighbor[:300],
             "page": primary.page if primary else 0,
-        })
+        }
+        if fi.field_type in ("/Btn", "/Ch"):
+            states = fi.states
+            if states:
+                entry["states"] = states
+        out.append(entry)
     return out
 
 
@@ -452,10 +505,43 @@ async def propose_mapping(
 # time it would silently render empty (the interpolate regex matches but
 # _resolve returns None), giving users a blank PDF with no signal as to why.
 # Surfacing it at upload-review time costs nothing and saves the surprise.
-def _build_canonical_path_allowlist() -> set[str]:
+def _build_canonical_path_allowlist() -> tuple[set[str], dict[str, frozenset[str]]]:
+    """Returns (path_allowlist, literal_values_by_path).
+
+    path_allowlist: all canonical paths the AI may propose.
+    literal_values_by_path: for paths whose TransactionFields type is a Literal
+        enum (e.g. property_type, escrowee, loan_type), the allowed string
+        values. Used to validate btn_choices keys at proposal-to-mapping time:
+        AI emitting {'multifamily': '/On'} for property_type (Literal[attached,
+        detached, multi_unit]) gets dropped.
+    """
+    from typing import get_args, get_origin, Literal
     from .schema import AgentProfile, Property, TransactionFields  # local import to avoid cycle
 
     allowed: set[str] = set()
+    literals: dict[str, frozenset[str]] = {}
+
+    def collect_literal(path: str, annotation: object) -> None:
+        """If annotation is Literal[...] or Literal[...] | None, capture its
+        string values under `path`. Handles the X|None unions Pydantic emits.
+
+        Detection order matters: check Literal FIRST because typing.Literal
+        is itself the origin (get_origin returns typing.Literal), and recursing
+        into its args (which are plain strings, not types) would loop on
+        non-type values."""
+        origin = get_origin(annotation)
+        # Literal[...] direct hit.
+        if origin is Literal:
+            values = {str(v) for v in get_args(annotation)}
+            if values:
+                literals[path] = frozenset(values)
+            return
+        # Union / X | None — recurse on each non-None branch.
+        if origin is not None:
+            for arg in get_args(annotation):
+                if arg is type(None):
+                    continue
+                collect_literal(path, arg)
 
     # TransactionFields scalar + nested keys
     for name, field in TransactionFields.model_fields.items():
@@ -464,6 +550,7 @@ def _build_canonical_path_allowlist() -> set[str]:
                 allowed.add(f"property.{prop_name}")
         else:
             allowed.add(name)
+            collect_literal(name, field.annotation)
 
     # AgentProfile nested under "agent."
     for name in AgentProfile.model_fields:
@@ -489,7 +576,7 @@ def _build_canonical_path_allowlist() -> set[str]:
         "lease_end_year_2digit",
         "additional_earnest_month_day",
         "additional_earnest_year_2digit",
-        # AcroForm checkbox/radio state names from interpolate
+        # AcroForm checkbox/radio state names from interpolate (bundled-mapping path)
         "property_type_attached_state",
         "property_type_detached_state",
         "property_type_multi_unit_state",
@@ -501,10 +588,10 @@ def _build_canonical_path_allowlist() -> set[str]:
         "loan_type_state",
         "statutory_state",
     })
-    return allowed
+    return allowed, literals
 
 
-_CANONICAL_PATH_ALLOWLIST = _build_canonical_path_allowlist()
+_CANONICAL_PATH_ALLOWLIST, _CANONICAL_LITERAL_VALUES = _build_canonical_path_allowlist()
 
 
 # Mappings with confidence < this threshold get blanked at fill time and
@@ -515,16 +602,81 @@ _CANONICAL_PATH_ALLOWLIST = _build_canonical_path_allowlist()
 LOW_CONFIDENCE_THRESHOLD = 7
 
 
+def _sanitize_btn_choices(
+    btn_choices: dict[str, str],
+    canonical_path: str,
+    widget_states: list[str],
+) -> tuple[dict[str, str], list[str]]:
+    """Filter btn_choices to only entries the system can fill correctly.
+
+    Drops:
+      - keys not in the canonical Literal enum (e.g. AI emits 'multifamily'
+        for property_type whose values are attached|detached|multi_unit)
+      - state values not in the widget's actual /AP/N keys (e.g. AI emits
+        '/On' when the widget only accepts '/Yes')
+
+    Returns (cleaned_choices, warnings). Warnings are human-readable strings
+    intended for validate_mapping_structure / needs_attention flagging.
+
+    Why per-key filtering instead of all-or-nothing reject: a radio with 3
+    options where the AI gets 2 right and 1 wrong is more useful than
+    blanking the whole field. The wrong 1 just doesn't fire — which is the
+    same correct-by-default behavior as blank.
+    """
+    if not btn_choices:
+        return {}, []
+    cleaned: dict[str, str] = {}
+    warnings: list[str] = []
+    allowed_values = _CANONICAL_LITERAL_VALUES.get(canonical_path)
+    # Empty list is meaningful: the field has /AP/N but no states extracted, OR
+    # we couldn't find the field in field_descriptions. Either way we can't
+    # trust the AI's state proposal — reject everything to avoid silently
+    # accepting hallucinated states. None means "no widget-state context
+    # available" (test path with field_descriptions=None) — skip the check.
+    widget_state_set = set(widget_states) if widget_states is not None else None
+    for value, state in btn_choices.items():
+        if allowed_values is not None and value not in allowed_values:
+            warnings.append(
+                f"btn_choices for path '{canonical_path}' has unknown value '{value}' "
+                f"(allowed: {sorted(allowed_values)})"
+            )
+            continue
+        if widget_state_set is not None and state not in widget_state_set:
+            warnings.append(
+                f"btn_choices for path '{canonical_path}' proposes state '{state}' "
+                f"not in widget /AP/N (allowed: {sorted(widget_state_set)})"
+            )
+            continue
+        cleaned[value] = state
+
+    # Silent-no-op detection: if every cleaned entry maps to "/Off" the field
+    # will never fire its checkbox regardless of ctx — same observable result
+    # as having NO mapping at all, but without the low_confidence surface.
+    # Reject the whole table so the caller blanks + surfaces it instead of
+    # writing a useless BtnChoice. Real cause: AI gets the canonical values
+    # right but the on-state wrong, OR is genuinely confused about which kid
+    # is the "on" widget. Caught by adversarial review on 2026-05-10.
+    if cleaned and all(state == "/Off" for state in cleaned.values()):
+        warnings.append(
+            f"btn_choices for path '{canonical_path}' maps every canonical "
+            f"value to '/Off' — checkbox would never fire. Rejected."
+        )
+        return {}, warnings
+
+    return cleaned, warnings
+
+
 def proposal_to_mapping_file(
     proposal: ProposedMapping,
     title: str,
     source_pdf_filename: str,
     filled_filename: str,
-) -> tuple[MappingFile, list[ExtraField], list[str], list[dict]]:
+    field_descriptions: list[dict] | None = None,
+) -> tuple[MappingFile, list[ExtraField], list[str], list[dict], list[str]]:
     """Convert the AI's ProposedMapping into the on-disk MappingFile shape +
     extras + a list of low-confidence fields.
 
-    Returns (mapping, extras, unknown_paths, low_confidence_fields).
+    Returns (mapping, extras, unknown_paths, low_confidence_fields, btn_warnings).
       - mapping: MappingFile written to disk; fill_pdf reads this.
       - extras: ExtraField list for templates.extra_fields column.
       - unknown_paths: AI-proposed canonical paths that don't exist in our
@@ -534,16 +686,44 @@ def proposal_to_mapping_file(
         confidence is below threshold. Written into the mapping JSON's
         `low_confidence` block so /api/generate can surface them to the
         user without re-running the AI.
+      - btn_warnings: list of human-readable warnings about /Btn proposals
+        that had btn_choices values pruned for being invalid (unknown
+        canonical-enum value or unknown widget state). Fed into
+        validate_mapping_structure so the template can be flagged
+        needs_attention without blocking upload.
+
+    `field_descriptions` is optional; when provided (the production
+    upload path always provides it) we use it to validate btn_choices
+    state names against each widget's actual /AP/N keys. Without it
+    (some test paths) we skip the widget-state check but still validate
+    against the canonical Literal enum.
 
     Confidence-gating policy: fields below threshold get blanked in the
     mapping (renders empty at fill time) AND surfaced to the user as
     "we weren't sure — fill these in by hand". Wrong > blank on a legal
     contract, so we err toward blank.
     """
-    fields: dict[str, str] = {}
+    fields: dict[str, str | BtnChoice] = {}
     extras: list[ExtraField] = []
     unknown_paths: list[str] = []
     low_confidence_fields: list[dict] = []
+    btn_warnings: list[str] = []
+
+    # Build pdf_field → (widget states, field_type) lookup once. Empty list when the
+    # field has no /AP/N (i.e. /Tx or /Sig — btn_choices shouldn't be there anyway).
+    # field_type lookup is used to GATE btn_choices: AI may hallucinate btn_choices
+    # on a /Tx field via prompt injection or confusion, and routing those through
+    # BtnChoice silently corrupts the text field's /V at fill time (renders "/Off"
+    # into an address line). Defense-in-depth: only honor btn_choices when the
+    # field is actually a /Btn or /Ch. Caught by code review on 2026-05-10.
+    widget_states_by_field: dict[str, list[str]] = {}
+    field_type_by_field: dict[str, str] = {}
+    if field_descriptions is not None:
+        for fd in field_descriptions:
+            name = fd.get("pdf_field")
+            if name is not None:
+                widget_states_by_field[name] = list(fd.get("states") or [])
+                field_type_by_field[name] = str(fd.get("field_type") or "")
 
     for f in proposal.fields:
         is_low_confidence = f.confidence < LOW_CONFIDENCE_THRESHOLD
@@ -564,6 +744,58 @@ def proposal_to_mapping_file(
                     "confidence": f.confidence,
                     "kind": "canonical",
                 })
+            elif f.btn_choices and field_type_by_field.get(f.pdf_field) == "/Btn":
+                # /Btn field with a conditional state table. Sanitize keys
+                # (must match canonical Literal enum) and values (must match
+                # widget /AP/N states). Surviving entries become a BtnChoice.
+                # GATING (added 2026-05-10 after code review): we only enter this
+                # branch when the field is actually a /Btn — otherwise routing
+                # btn_choices through BtnChoice would silently corrupt:
+                #   - /Tx fields: write "/Off" into a text blank
+                #   - /Ch fields: write a state name into a dropdown /V
+                # /Ch fields fall through to the string-template path below,
+                # which is correct (dropdowns take string values, not states).
+                widget_states = widget_states_by_field.get(f.pdf_field, [])
+                cleaned, warns = _sanitize_btn_choices(
+                    f.btn_choices, f.canonical_path, widget_states
+                )
+                if warns:
+                    btn_warnings.extend(
+                        f"{f.pdf_field}: {w}" for w in warns
+                    )
+                if cleaned:
+                    fields[f.pdf_field] = BtnChoice(
+                        canonical_path=f.canonical_path,
+                        choices=cleaned,
+                    )
+                else:
+                    # All choices pruned — nothing usable. Blank + surface.
+                    fields[f.pdf_field] = ""
+                    low_confidence_fields.append({
+                        "pdf_field": f.pdf_field,
+                        "proposed": f.canonical_path,
+                        "confidence": f.confidence,
+                        "kind": "canonical",
+                    })
+            elif field_type_by_field.get(f.pdf_field) == "/Btn":
+                # /Btn field WITHOUT btn_choices. The AI didn't tell us which
+                # state to fire, and a string template like "{property_type}"
+                # would interpolate to a raw enum string ("attached") that
+                # pdf_fill writes as text into the field's /V — leaving the
+                # checkbox visually unchecked. Treat as low-confidence: blank
+                # the field + surface so the user knows to fill it manually.
+                fields[f.pdf_field] = ""
+                low_confidence_fields.append({
+                    "pdf_field": f.pdf_field,
+                    "proposed": f.canonical_path,
+                    "confidence": f.confidence,
+                    "kind": "canonical",
+                })
+                btn_warnings.append(
+                    f"{f.pdf_field}: /Btn field mapped to '{f.canonical_path}' "
+                    f"without btn_choices — blanked (AI would have written raw "
+                    f"value to /V instead of selecting a checkbox state)"
+                )
             else:
                 fields[f.pdf_field] = "{" + f.canonical_path + "}"
         elif f.extra_field_name:
@@ -576,6 +808,41 @@ def proposal_to_mapping_file(
                     "confidence": f.confidence,
                     "kind": "extra",
                 })
+            elif f.btn_choices and field_type_by_field.get(f.pdf_field) == "/Btn":
+                # /Btn field tied to a template_extras boolean (e.g. dual_agency
+                # checkbox). Same sanitization, path is template_extras.<name>.
+                # GATING: only honor btn_choices on actual /Btn or /Ch fields —
+                # see canonical_path branch above for the same defense.
+                synthetic_path = f"template_extras.{f.extra_field_name}"
+                widget_states = widget_states_by_field.get(f.pdf_field, [])
+                # For extras we don't know the Literal enum (it's user-defined),
+                # so only validate state names against widget /AP/N.
+                cleaned, warns = _sanitize_btn_choices(
+                    f.btn_choices, synthetic_path, widget_states
+                )
+                if warns:
+                    btn_warnings.extend(
+                        f"{f.pdf_field}: {w}" for w in warns
+                    )
+                if cleaned:
+                    fields[f.pdf_field] = BtnChoice(
+                        canonical_path=synthetic_path,
+                        choices=cleaned,
+                    )
+                    extras.append(ExtraField(
+                        name=f.extra_field_name,
+                        type=f.extra_field_type or "bool",
+                        description=f.extra_field_description or "",
+                        pdf_field=f.pdf_field,
+                    ))
+                else:
+                    fields[f.pdf_field] = ""
+                    low_confidence_fields.append({
+                        "pdf_field": f.pdf_field,
+                        "proposed": f.extra_field_name,
+                        "confidence": f.confidence,
+                        "kind": "extra",
+                    })
             else:
                 # Reference into template_extras.
                 fields[f.pdf_field] = "{template_extras." + f.extra_field_name + "}"
@@ -598,7 +865,25 @@ def proposal_to_mapping_file(
         fields=fields,
         low_confidence=low_confidence_fields,
     )
-    return mapping, extras, unknown_paths, low_confidence_fields
+    return mapping, extras, unknown_paths, low_confidence_fields, btn_warnings
+
+
+def _mapping_value_is_blank(v: str | BtnChoice) -> bool:
+    """A mapping value is 'blank' (will fill nothing at runtime) when it's
+    an empty/whitespace string, OR a BtnChoice whose choices either:
+      - empty: sanitizer rejected every entry, hand-edited JSON
+      - all '/Off': every canonical value produces /Off → widget never fires
+
+    Both BtnChoice cases are equivalent to "" at fill time but pre-fix were
+    counted as non-blank in coverage_low. Now they correctly count toward
+    the blank ratio so coverage warnings fire when they should."""
+    if isinstance(v, str):
+        return not v.strip()
+    if not v.choices:
+        return True
+    # All-/Off table: sanitizer normally rejects these but hand-edited
+    # mapping JSON can sneak one through. Treat as blank for coverage stats.
+    return all(state == "/Off" for state in v.choices.values())
 
 
 def validate_mapping_structure(
@@ -606,6 +891,7 @@ def validate_mapping_structure(
     field_descriptions: list[dict],
     unknown_paths: list[str],
     low_confidence_fields: list[dict],
+    btn_warnings: list[str] | None = None,
 ) -> list[str]:
     """Sanity-check the mapping after proposal_to_mapping_file. Returns a
     list of warnings. Empty list = clean mapping ready to ship.
@@ -629,6 +915,9 @@ def validate_mapping_structure(
        Flag if >50%.
     3. Hallucinated paths — flag if >5%.
     4. Low-confidence concentration — flag if >30%.
+    5. /Btn proposal sanitization warnings — if proposal_to_mapping_file
+       had to drop btn_choices entries, surface them so the human reviewer
+       knows the AI got widget states or canonical enums wrong.
     """
     warnings: list[str] = []
     total = len(field_descriptions)
@@ -644,7 +933,10 @@ def validate_mapping_structure(
         )
 
     if proposed > 0:
-        blank_count = sum(1 for v in mapping.fields.values() if not v.strip())
+        # Per F4/F10 from outside-voice review: mapping.fields is now
+        # dict[str, str | BtnChoice]. .strip() crashes on BtnChoice. Route
+        # through _mapping_value_is_blank to handle both shapes.
+        blank_count = sum(1 for v in mapping.fields.values() if _mapping_value_is_blank(v))
         blank_pct = blank_count / proposed
         if blank_pct > 0.5:
             warnings.append(
@@ -666,6 +958,19 @@ def validate_mapping_structure(
                 f"({low_conf_pct:.0%}) are below confidence threshold. User will "
                 f"need to fill many fields by hand."
             )
+
+    if btn_warnings:
+        # /Btn-specific warnings: AI emitted choices that didn't match the
+        # widget's actual /AP/N keys or the canonical Literal enum. Flag the
+        # template so the agent reviews it before generating. Cap at 5 in the
+        # surfaced text so the warning column stays readable; the full list
+        # lives in the mapping's audit trail.
+        sample = btn_warnings[:5]
+        more = f" (+{len(btn_warnings) - 5} more)" if len(btn_warnings) > 5 else ""
+        warnings.append(
+            f"btn_choice_mismatches: {len(btn_warnings)} /Btn proposal(s) had "
+            f"invalid choices pruned. Examples: {sample}{more}"
+        )
 
     return warnings
 

@@ -496,18 +496,21 @@ async def api_upload_template(
             pass
         raise HTTPException(502, f"AI mapping failed: {e}")
 
-    mapping_file, extras, unknown_paths, low_confidence = templates_mod.proposal_to_mapping_file(
+    mapping_file, extras, unknown_paths, low_confidence, btn_warnings = templates_mod.proposal_to_mapping_file(
         proposal,
         title=title,
         source_pdf_filename=f"{template_id}.pdf",
         filled_filename=f"{title.lower().replace(' ', '_')}_filled.pdf",
+        field_descriptions=field_descs,
     )
 
     # Structural validation: catch the worst mapping failures before they
     # reach a paying customer. Auto-flag needs_attention when too many
-    # fields are unmapped or hallucinated.
+    # fields are unmapped or hallucinated. btn_warnings surfaces /Btn proposals
+    # whose state names or canonical-enum values were pruned (per F4/F10
+    # outside-voice findings, 2026-05-10 review).
     validation_warnings = templates_mod.validate_mapping_structure(
-        mapping_file, field_descs, unknown_paths, low_confidence,
+        mapping_file, field_descs, unknown_paths, low_confidence, btn_warnings,
     )
     initial_status = "needs_attention" if validation_warnings else "ready"
 
@@ -539,6 +542,7 @@ async def api_upload_template(
             for e in extras
         ],
         field_count=len(field_descs),
+        warnings=validation_warnings,
     )
 
 

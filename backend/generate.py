@@ -22,7 +22,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from pypdf import PdfReader
 
-from .interpolate import build_context, interpolate
+from .interpolate import build_context, interpolate_mapping
 from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields, UncertainField
 
@@ -97,7 +97,10 @@ def fill_document(
         agent_dict=agent.model_dump(mode="json"),
     )
 
-    rendered = {pdf_field: interpolate(tmpl, ctx) for pdf_field, tmpl in mapping.fields.items()}
+    # interpolate_mapping handles both string templates and BtnChoice
+    # conditional state lookups. Returns a flat {pdf_field: rendered_string}
+    # dict ready for fill_pdf.
+    rendered = interpolate_mapping(mapping.fields, ctx)
 
     reader = PdfReader(str(source_pdf))
     pdf_bytes = fill_pdf(reader, rendered)

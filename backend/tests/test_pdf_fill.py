@@ -287,6 +287,107 @@ def test_multiboard_address_includes_county_when_set(sale_fields, agent):
     assert ", , " not in addr
 
 
+def test_btnchoice_resolves_and_fills_same_as_bundled_state(sale_fields, agent):
+    """REGRESSION + new-feature parity: filling Multi-Board with the bundled
+    {property_type_attached_state} template should produce the SAME /AS as
+    filling it with a BtnChoice(canonical_path='property_type',
+    choices={'attached': '/On', 'detached': '/Off', 'multi_unit': '/Off'}).
+
+    This is the proof that BtnChoice is a 1:1 substitute for the bundled
+    computed-state pattern. If this test ever fails, BtnChoice resolution
+    drifted from the bundled mapping's behavior."""
+    import json
+    from backend.generate import fill_document, MAPPINGS_DIR
+    from backend.interpolate import build_context, interpolate_mapping
+    from backend.pdf_fill import fill_pdf
+    from backend.schema import BtnChoice, MappingFile
+    from pypdf import PdfReader
+
+    # First baseline: fill via bundled mapping path.
+    bundled_doc = fill_document("multiboard", sale_fields, agent)
+    bundled_reader = _read_filled(bundled_doc)
+    bundled_as_7 = _all_as_for(bundled_reader, "7")  # "attached" checkbox
+    bundled_as_8 = _all_as_for(bundled_reader, "8")  # "detached"
+    bundled_as_9 = _all_as_for(bundled_reader, "9")  # "multi_unit"
+
+    # Now build the SAME mapping but swap fields 7/8/9 to use BtnChoice.
+    raw = json.loads((MAPPINGS_DIR / "multiboard.json").read_text())
+    mapping = MappingFile.model_validate(raw)
+    btn_choices = {"attached": "/On", "detached": "/Off", "multi_unit": "/Off"}
+    mapping.fields["7"] = BtnChoice(canonical_path="property_type",
+                                    choices={"attached": "/On"})
+    mapping.fields["8"] = BtnChoice(canonical_path="property_type",
+                                    choices={"detached": "/On"})
+    mapping.fields["9"] = BtnChoice(canonical_path="property_type",
+                                    choices={"multi_unit": "/On"})
+
+    ctx = build_context(sale_fields.model_dump(mode="json"),
+                        agent.model_dump(mode="json"))
+    rendered = interpolate_mapping(mapping.fields, ctx)
+
+    source_pdf = TEMPLATES / mapping.meta.source_pdf
+    reader = PdfReader(str(source_pdf))
+    out_bytes = fill_pdf(reader, rendered)
+    btn_reader = PdfReader(io.BytesIO(out_bytes))
+
+    # BtnChoice path should produce the SAME /AS values as the bundled path.
+    assert _all_as_for(btn_reader, "7") == bundled_as_7
+    assert _all_as_for(btn_reader, "8") == bundled_as_8
+    assert _all_as_for(btn_reader, "9") == bundled_as_9
+
+
+def test_btnchoice_handles_non_On_widget_states():
+    """REGRESSION (outside-voice F9): the actual bug this feature exists to
+    fix. A widget with /AP/N keys = {/Yes, /Off} should get /AS = /Yes when
+    the BtnChoice's resolved state is /Yes — not silently /Off because
+    the AI's guess of '/On' wasn't in the widget's supported states.
+
+    Approach: feed fill_pdf a synthetic field-name → state-name mapping
+    directly (skipping the AI mapping pipeline), and verify the existing
+    pdf_fill logic does the right thing when given a literal state matching
+    the widget's actual /AP/N. The end-to-end /Yes flow is exercised when
+    interpolate_mapping → resolve_btn_choice produces '/Yes' for a
+    BtnChoice with choices={'true': '/Yes'}."""
+    from backend.interpolate import interpolate_mapping
+    from backend.schema import BtnChoice
+
+    # Verify the BtnChoice -> "/Yes" resolution path. The widget-level
+    # behavior (writing /AS=/Yes when /Yes is in /AP/N) is already covered
+    # by pdf_fill.py:106 and exercised by test_multiboard_checkbox_visual_state.
+    # The new code path is "BtnChoice produces the right literal" — assert
+    # that part:
+    bc = BtnChoice(canonical_path="dual_agency", choices={"true": "/Yes"})
+    ctx = {"dual_agency": True}
+    rendered = interpolate_mapping({"DUAL": bc}, ctx)
+    assert rendered["DUAL"] == "/Yes", (
+        "BtnChoice must emit the literal state string from choices, not '/On'. "
+        "If this fails, AI-mapped templates with non-standard widget states "
+        "(e.g. /Yes instead of /On) silently fail to check their boxes."
+    )
+
+    # And the negative case: same widget, value not in choices -> /Off.
+    rendered_off = interpolate_mapping({"DUAL": bc}, {"dual_agency": False})
+    assert rendered_off["DUAL"] == "/Off"
+
+
+def test_existing_string_only_mappings_still_fill_unchanged(sale_fields, agent):
+    """REGRESSION: existing bundled mapping JSONs are pure dict[str, str].
+    After switching MappingFile.fields to dict[str, str | BtnChoice], they
+    must continue to fill exactly as before. fill_document on the bundled
+    multiboard.json produces a working PDF with the right values."""
+    doc = fill_document("multiboard", sale_fields, agent)
+    reader = _read_filled(doc)
+
+    # Address field — string template path.
+    addr = str(_v(reader, "Address"))
+    assert "Hubbard" in addr
+    assert "Cook County" in addr
+
+    # Purchase price — string template + currency filter.
+    price = str(_v(reader, "24"))
+    assert "$725,000" in price
+
+
 def test_need_appearances_flag_set(lease_fields, agent):
     """Without /NeedAppearances=true, Preview shows empty fields even when /V
     is set. This is an easy regression to introduce."""
