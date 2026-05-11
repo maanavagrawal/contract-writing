@@ -1312,38 +1312,64 @@ input, textarea, select, button { font-family: inherit; }
   word-break: break-all;
 }
 
-/* ---------- uncertain-fields panel (post-generate callout) ---------- */
-.uncertain-fields {
+/* ---------- uncertain-fields panel (post-generate callout) ----------
+   The host element is itself a native <details> so the toggle is keyboard-
+   accessible and works without JS. Default-closed; the summary row alone
+   is ~40px so the user can immediately see + scroll to the PDF. List
+   capped at 280px when expanded so even 50+ rows stay scrollable inside
+   the banner instead of taking over the page. */
+details.uncertain-fields {
   margin: 0 0 12px;
-  padding: 12px 16px;
   background: var(--warning-soft);
   border: 1px solid var(--warning);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 .uncertain-header {
+  list-style: none;                 /* Firefox: hides the default marker */
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  padding: 10px 14px;
   color: var(--text);
   font-size: 13px;
+  user-select: none;
 }
-.uncertain-header svg {
+.uncertain-header::-webkit-details-marker { display: none; }
+.uncertain-icon {
   color: var(--warning);
   flex-shrink: 0;
 }
-.uncertain-header .hint {
+/* Dedicated class so we don't inherit the global .hint font-family (mono)
+   inside the otherwise sans summary row. */
+.uncertain-sub {
   color: var(--text-muted);
-  margin-left: 4px;
   font-weight: normal;
+  font-size: 12.5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.uncertain-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+details.uncertain-fields[open] .uncertain-chevron {
+  transform: rotate(180deg);
 }
 .uncertain-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
 }
 .uncertain-row {
   display: flex;

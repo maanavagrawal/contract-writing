@@ -964,17 +964,22 @@ function clearPagesContainer() {
 }
 
 function renderUncertainFields(doc) {
-  // Show a banner above the rendered PDF listing fields the AI wasn't
-  // sure about. Those fields are blank in the PDF — the user fills them
-  // in by hand. This is NOT a mapping-review UI (we promised not to
-  // build that); it's a "here's what we left for you" callout.
+  // Collapsed banner above the rendered PDF listing fields the AI wasn't
+  // sure about. Default collapsed so the PDF stays visible without scrolling
+  // past 96 rows of warnings (real Multi-Board case). Native <details> so
+  // the toggle is keyboard-accessible and works without extra JS. The host
+  // <div id="uncertain-fields"> is itself the <details> element — no extra
+  // wrapper. State persists across regenerates: if the user expanded the
+  // panel and then regenerates the same template, the new banner stays open.
   if (!els.uncertainFields) return;
   const uncertain = (doc && doc.uncertain_fields) || [];
   if (!uncertain.length) {
     els.uncertainFields.hidden = true;
     els.uncertainFields.innerHTML = "";
+    els.uncertainFields.removeAttribute("open");
     return;
   }
+  const wasOpen = els.uncertainFields.hasAttribute("open");
   els.uncertainFields.hidden = false;
   const count = uncertain.length;
   const heading = `We weren't sure about ${count} field${count === 1 ? "" : "s"}`;
@@ -994,15 +999,19 @@ function renderUncertainFields(doc) {
     `;
   }).join("");
   els.uncertainFields.innerHTML = `
-    <div class="uncertain-header">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <summary class="uncertain-header">
+      <svg class="uncertain-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
       </svg>
       <strong>${escapeHtml(heading)}</strong>
-      <span class="hint">— left blank in the PDF, fill in by hand</span>
-    </div>
+      <span class="uncertain-sub">left blank in the PDF, fill in by hand</span>
+      <svg class="uncertain-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </summary>
     <ul class="uncertain-list">${rows}</ul>
   `;
+  if (wasOpen) els.uncertainFields.setAttribute("open", "");
 }
 
 function escapeHtml(s) {
@@ -1078,6 +1087,7 @@ function exitPreviewMode() {
   if (els.uncertainFields) {
     els.uncertainFields.hidden = true;
     els.uncertainFields.innerHTML = "";
+    els.uncertainFields.removeAttribute("open");
   }
   els.selectionMode.hidden = false;
 }
