@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -26,8 +27,17 @@ from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields
 
 ROOT = Path(__file__).resolve().parent.parent
-MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
-TEMPLATES_DIR = ROOT / "templates" / "pdf"
+
+# Same STORAGE_DIR contract as backend/templates.py — keep both modules
+# pointing at the same on-disk layout so save_uploaded_pdf and fill_document
+# read/write through the same volume mount in production.
+_STORAGE_ROOT = os.environ.get("STORAGE_DIR")
+if _STORAGE_ROOT:
+    MAPPINGS_DIR = Path(_STORAGE_ROOT) / "mappings"
+    TEMPLATES_DIR = Path(_STORAGE_ROOT) / "pdf"
+else:
+    MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
+    TEMPLATES_DIR = ROOT / "templates" / "pdf"
 
 
 class UnknownDocument(Exception):

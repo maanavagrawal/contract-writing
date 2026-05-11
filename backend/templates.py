@@ -45,8 +45,26 @@ from .schema import MappingFile, MappingMeta
 MODEL = "gpt-5"
 
 ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES_PDF_DIR = ROOT / "templates" / "pdf"
-MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
+
+# Storage paths. In production (Railway) STORAGE_DIR points at a mounted
+# volume so uploaded PDFs and mapping JSONs survive redeploys. Without a
+# volume, both subdirs go to ephemeral disk and user uploads vanish on
+# every push — fine for local dev (we use repo-relative paths there) but
+# fatal in prod.
+#
+# Resolution order:
+#   1. STORAGE_DIR env var (Railway sets this to /app/storage)
+#   2. Repo-relative fallback (templates/pdf + backend/mappings)
+#
+# The two subdirs are pinned to specific names so mappings on disk match
+# what tests + existing seeded fixtures expect.
+_STORAGE_ROOT = os.environ.get("STORAGE_DIR")
+if _STORAGE_ROOT:
+    TEMPLATES_PDF_DIR = Path(_STORAGE_ROOT) / "pdf"
+    MAPPINGS_DIR = Path(_STORAGE_ROOT) / "mappings"
+else:
+    TEMPLATES_PDF_DIR = ROOT / "templates" / "pdf"
+    MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
 
 
 # ---------- AI proposal Pydantic shape (what GPT returns) ----------
