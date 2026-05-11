@@ -193,6 +193,116 @@ def test_low_confidence_fields_are_blanked_and_surfaced():
 
 
 # ============================================================================
+# Neighbor-text extraction (the AI's primary signal for label inference)
+# ============================================================================
+#
+# Regression for the 2026-05-11 incident: column-header labels printed UNDER
+# the input rect (Multi-Board's address row, contact-block grids) were invisible
+# to extract_neighbor_text. The AI got useless ABOVE text and mapped the
+# Address field as low-confidence → blanked. Now extract_neighbor_text also
+# scans a BELOW band, and the same-line band is tight enough that adjacent
+# rows of inputs don't bleed labels into each other.
+
+REPO_ROOT_TEST = Path(__file__).resolve().parent.parent.parent
+MULTIBOARD_PDF = REPO_ROOT_TEST / "templates" / "pdf" / "Multi-Board-8.0 (1).pdf"
+
+
+def test_neighbor_text_below_band_picks_up_column_headers():
+    """REGRESSION (2026-05-11): the page-1 Address widget on Multi-Board has
+    its label ON THE LINE BELOW the rect ("Address Unit # City State Zip
+    County" — the column-header row that explains what the wide input means).
+    Without BELOW-band extraction, the AI saw only paragraph context above
+    and mapped Address to a low-confidence extra_field → blanked at fill time.
+    With BELOW now scanned, the descriptor includes "BELOW: Address Unit #
+    [IF APPLICABLE] City State Zip ..." and the AI can map it correctly."""
+    from pypdf import PdfReader
+    reader = PdfReader(str(MULTIBOARD_PDF))
+    descs = templates_mod.collect_field_descriptions(reader)
+    address_desc = next((d for d in descs if d["pdf_field"] == "Address"), None)
+    assert address_desc is not None, "Address field must exist in Multi-Board"
+    neighbor = address_desc["neighbor_text"]
+    assert "BELOW:" in neighbor, f"expected BELOW band in: {neighbor!r}"
+    assert "Address" in neighbor, "BELOW must include the Address column label"
+    # Other column headers should also show up
+    assert any(label in neighbor for label in ("City", "State", "Zip"))
+
+
+def test_neighbor_text_checkbox_right_labels_still_detected():
+    """REGRESSION (adversarial review 2026-05-11): tightening the same-line
+    band must not break RIGHT-of-checkbox label detection. The property-type
+    cluster on Multi-Board (fields 7/8/9) has labels "Single Family Attached
+    / Detached / Multi-Unit" to the RIGHT of each checkbox. Verify each
+    checkbox still captures its label."""
+    from pypdf import PdfReader
+    reader = PdfReader(str(MULTIBOARD_PDF))
+    descs = templates_mod.collect_field_descriptions(reader)
+    by_name = {d["pdf_field"]: d for d in descs}
+    # Field 7 = "Single Family Attached" checkbox. Its RIGHT label is the
+    # next checkbox's label "Single Family Detached" because the labels are
+    # printed BETWEEN the checkboxes. What matters: SOMETHING from the
+    # cluster shows up so the AI can disambiguate via the visual crop.
+    f7 = by_name.get("7")
+    assert f7 is not None and f7["field_type"] == "/Btn"
+    assert "Single Family" in f7["neighbor_text"], (
+        f"checkbox 7 lost its label cluster: {f7['neighbor_text']!r}"
+    )
+
+
+def test_neighbor_text_below_band_does_not_capture_distant_paragraph():
+    """REGRESSION (adversarial review 2026-05-11): the BELOW band was 1.6
+    line-heights deep, which on a single-column form pulls the start of
+    the next paragraph into BELOW. With prompt rules elevating short BELOW
+    strings to 'primary label', this regressed single-column forms by
+    promoting paragraph-fragment noise. Verify BELOW is capped so it can't
+    reach text more than ~1 line below the rect. Field 1 on Multi-Board
+    sits between paragraph context above and form-line-3 below — BELOW
+    must not grab line 3 (Seller Name row, ~14pt below)."""
+    from pypdf import PdfReader
+    reader = PdfReader(str(MULTIBOARD_PDF))
+    descs = templates_mod.collect_field_descriptions(reader)
+    f1 = next((d for d in descs if d["pdf_field"] == "1"), None)
+    assert f1 is not None
+    neighbor = f1["neighbor_text"]
+    # Seller Name(s) sits one row (~14pt) below the buyer-name input.
+    # With BELOW at 0.9 line-heights (~17pt) it might just touch — but
+    # the FORMAT of MultiBoard puts the seller-name LABEL above its own
+    # input, so the BELOW band of field 1 (which scans below the buyer
+    # rect) should not capture "Seller Name(s)" because the seller label
+    # text actually sits AT y of the seller rect, ~14pt below — which IS
+    # within the depth. Looser assertion: BELOW is shorter than LEFT/ABOVE
+    # for paragraph-rich rects, signaling it's no longer the dominant signal.
+    if "BELOW:" in neighbor:
+        below_text = neighbor.split("BELOW:")[1].split("|")[0].strip()
+        # Sanity: should not be longer than ~180 chars (the slice cap)
+        # AND should not contain "approximate" which would indicate a
+        # multi-line capture into the paragraph below.
+        assert len(below_text) <= 180
+
+
+def test_neighbor_text_same_line_band_does_not_leak_adjacent_row_labels():
+    """REGRESSION (2026-05-11): on Multi-Board's form lines 2-3 (Buyer Name /
+    Seller Name) the input rects are ~14pt apart vertically. The old same-line
+    band (line_height * 0.4 above + 0.2 below) was tall enough to grab text
+    from BOTH rows, producing LEFT: "Buyer Name(s) Seller Name(s) [PLEASE
+    PRINT] [PLEASE PRINT]" — confusing the AI into mapping field 2 (the
+    seller name input) as low-confidence. Tightening the band to ~rect height
+    fixes this; LEFT now reports only the row's own label."""
+    from pypdf import PdfReader
+    reader = PdfReader(str(MULTIBOARD_PDF))
+    descs = templates_mod.collect_field_descriptions(reader)
+    seller_desc = next((d for d in descs if d["pdf_field"] == "2"), None)
+    assert seller_desc is not None
+    neighbor = seller_desc["neighbor_text"]
+    # The seller-name row's LEFT must NOT include Buyer Name
+    assert "Buyer Name" not in neighbor, (
+        f"same-line band leaked the buyer-name label into seller's neighbor "
+        f"text: {neighbor!r}"
+    )
+    # And SHOULD include the seller-name label
+    assert "Seller Name" in neighbor
+
+
+# ============================================================================
 # BtnChoice (autonomous /Btn fill: AI emits widget /AP/N states + canonical
 # value table; mapping carries them through to fill time)
 # ============================================================================

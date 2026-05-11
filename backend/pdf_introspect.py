@@ -270,22 +270,27 @@ def extract_neighbor_text(
 ) -> str:
     """Pull text that's most likely to be the LABEL for an AcroForm field.
 
-    Real-world form labels almost always live in one of three places relative
-    to the input rectangle:
-      1. immediately to the LEFT on the same line ("Tenant Email: ___")
-      2. immediately ABOVE the field, often centered ("Lease End Date\n___")
-      3. for checkboxes, immediately to the RIGHT ("□ Single Family Detached")
+    Real-world form labels live in one of four places relative to the input rect:
+      1. LEFT on the same line ("Tenant Email: ___")
+      2. ABOVE the field, often centered ("Lease End Date\\n___")
+      3. RIGHT on the same line, for checkboxes ("□ Single Family Detached")
+      4. BELOW the field as a column header — common in multi-column legal
+         forms like Multi-Board where line 8 has six adjacent inputs labeled
+         "Address | Unit # | City | State | Zip | County" on the row UNDER
+         the rects, not above (form-line-9 in the printed page).
 
     A simple radius box (the v1 approach) drowns out the label with paragraph
-    text on dense legal contracts like Multi-Board: the 1-inch box around
-    field "1" pulled in three full paragraphs while the actual label "Buyer
-    Name(s) [PLEASE PRINT]" got buried.
+    text on dense legal contracts. Each band is narrow on purpose: ~half a
+    line tall vertically, ~3 inches wide horizontally. This stops adjacent
+    rows of inputs (Buyer Name / Seller Name on lines 2-3 of Multi-Board)
+    from leaking each other's labels into LEFT.
 
     page_num: 1-based.
     rect: (llx, lly, urx, ury) in PDF user-space points.
     radius: legacy parameter, ignored. Kept for caller compatibility.
 
-    Returns up to ~400 chars of "LEFT: <text> | ABOVE: <text> | RIGHT: <text>".
+    Returns up to ~400 chars of "LEFT: <text> | ABOVE: <text> | RIGHT: <text>
+    | BELOW: <text>" — sections omitted when empty.
     """
     _ = radius  # kept for backwards-compat, no longer used
     if page_num < 1 or page_num > len(reader.pages):
@@ -303,17 +308,37 @@ def extract_neighbor_text(
     rect_h = max(ury - lly, 8.0)            # treat very thin checkboxes as ~8pt tall
     line_height = max(rect_h, 12.0) * 1.4   # typical line height with some headroom
 
-    # Vertical band: from one line above the field to the field's top.
-    # Allow a half-line below the rect for labels that sit on the same baseline
-    # as the input.
-    same_line_top = ury + line_height * 0.4
-    same_line_bot = lly - line_height * 0.2
+    # Same-line band is rect-relative (not line-height-relative): it accepts
+    # text whose baseline sits inside the rect or barely above/below it.
+    # On a 14pt-tall input rect: band ~ [lly-2, ury+3], ~19pt total. Text
+    # on the previous form line (e.g. Multi-Board's Buyer-Name label one
+    # row above the Seller-Name input) has a baseline at ury + ~10pt which
+    # is outside the band — no leak. On an 8pt-tall checkbox: band ~ [lly-1,
+    # ury+2], ~11pt total. Checkbox labels typically have their baseline at
+    # the rect's vertical center (well inside) so RIGHT detection still
+    # works on the "Single Family Attached / Detached / Multi-Unit" cluster.
+    # Caught by adversarial review on 2026-05-11.
+    same_line_top = ury + rect_h * 0.25
+    same_line_bot = lly - rect_h * 0.15
+
     above_top = ury + line_height * 1.6
     above_bot = ury + line_height * 0.4
+
+    # BELOW band: captures the SINGLE line of text immediately under the
+    # rect — the typical home of column-header labels in multi-column legal
+    # forms (Multi-Board's address row labels: "Address | Unit # | City |
+    # State | Zip | County"). Capped at ~0.9 line-heights so we don't reach
+    # into the next paragraph's body text. Earlier draft used 1.6 line-heights
+    # and pulled in paragraph fragments that the AI then over-trusted because
+    # the prompt elevated "short BELOW" strings to primary labels (caught
+    # by adversarial review 2026-05-11 — F2/F8).
+    below_top = lly - line_height * 0.2
+    below_bot = lly - line_height * 0.9
 
     left_pieces: list[tuple[float, str]] = []
     above_pieces: list[tuple[float, float, str]] = []
     right_pieces: list[tuple[float, str]] = []
+    below_pieces: list[tuple[float, float, str]] = []
 
     def visitor(text: str, cm, tm, font_dict, font_size) -> None:
         try:
@@ -338,6 +363,13 @@ def extract_neighbor_text(
             # Allow some horizontal slack — labels above can be centered.
             if (llx - 60) <= x <= (urx + 60):
                 above_pieces.append((y, x, stripped))
+        elif below_bot < y <= below_top:
+            # Column-header labels are typically narrow and centered under
+            # one rect. Keep the horizontal slack the same as ABOVE so a
+            # label that's slightly off-center still attaches to the right
+            # field. Tighter than ABOVE wouldn't survive 1-2pt of design drift.
+            if (llx - 60) <= x <= (urx + 60):
+                below_pieces.append((y, x, stripped))
 
     try:
         page.extract_text(visitor_text=visitor)
@@ -347,6 +379,9 @@ def extract_neighbor_text(
     left_text = " ".join(t for _, t in sorted(left_pieces, key=lambda p: p[0]))[-180:]
     above_text = " ".join(t for _, _, t in sorted(above_pieces, key=lambda p: (-p[0], p[1])))[-180:]
     right_text = " ".join(t for _, t in sorted(right_pieces, key=lambda p: p[0]))[:160]
+    # BELOW sorted top-to-bottom (largest y first) then left-to-right, mirroring
+    # ABOVE's reading order so the closest label-row comes first.
+    below_text = " ".join(t for _, _, t in sorted(below_pieces, key=lambda p: (-p[0], p[1])))[:180]
 
     parts: list[str] = []
     if left_text:
@@ -355,4 +390,6 @@ def extract_neighbor_text(
         parts.append(f"ABOVE: {above_text}")
     if right_text:
         parts.append(f"RIGHT: {right_text}")
+    if below_text:
+        parts.append(f"BELOW: {below_text}")
     return " | ".join(parts)[:400]

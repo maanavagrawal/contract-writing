@@ -146,8 +146,12 @@ TransactionFields schema used by an Illinois real-estate paperwork tool.
 For each PDF field you'll see:
   - the field's name (often a number or a label fragment)
   - neighbor_text: structured as "LEFT: <words to the left on the same line>
-    | ABOVE: <line just above> | RIGHT: <words to the right on the same line>"
-    (sections are omitted when empty)
+    | ABOVE: <line just above> | RIGHT: <words to the right on the same line>
+    | BELOW: <column-header label on the line below>" (sections are omitted
+    when empty). BELOW is the dominant signal on multi-column legal forms
+    where labels print UNDER their input rects (e.g. an address row whose
+    inputs are labeled "Address | Unit # | City | State | Zip" on the
+    following line).
   - the field type (/Tx text, /Btn checkbox or radio, /Ch dropdown, /Sig signature)
   - states (ONLY for /Btn and /Ch): the literal /AP/N appearance-state names
     the widget will accept. A checkbox typically shows ["/Off", "/On"]; a
@@ -159,12 +163,14 @@ For each PDF field you'll see:
     that text extraction missed (column headers, table rows, hand-tagged
     boxes). The image is your primary signal when neighbor_text is empty.
 
-LEFT text is almost always the label for input fields. RIGHT text is almost
-always the label for checkboxes (e.g. "□ Single Family Detached" → the
-field is the checkbox and "Single Family Detached" is its label). ABOVE
-text is often the column header on multi-column forms. Use these positional
-cues — don't trust the field's own name as a label, since on legal forms
-fields are often just numbers ("1", "2", "112").
+LEFT text is the default label for single-column input fields. RIGHT text
+is almost always the label for checkboxes. ABOVE text is often a section
+heading or paragraph context. BELOW text occasionally contains the
+column-header label on multi-column forms (e.g. Multi-Board's address row
+where labels like "City" sit under their inputs) but often just contains
+the start of the next paragraph — weigh BELOW against LEFT/ABOVE rather
+than trusting it blindly. Don't trust the field's own name as a label,
+since on legal forms fields are often just numbers ("1", "2", "112").
 
 You decide ONE of:
   A) The field maps to a canonical path in TransactionFields. Set canonical_path
