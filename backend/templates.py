@@ -328,10 +328,22 @@ def save_uploaded_pdf(pdf_bytes: bytes, template_id: str) -> Path:
     return target
 
 
-def validate_pdf(pdf_bytes: bytes) -> PdfReader:
-    """Open + sanity-check the PDF. Raises TemplateUploadError with a
-    user-friendly message on anything that prevents fill: encryption, no
-    AcroForm, or malformed bytes."""
+def validate_pdf(pdf_bytes: bytes) -> tuple[PdfReader, bytes]:
+    """Open + sanity-check the PDF. Returns (reader, bytes_to_persist).
+
+    For normal AcroForm PDFs (Multi-Board, Compass Lease Abstract, etc.) the
+    returned bytes are the original — zero new work. For flattened PDFs
+    (CAR-via-iLovePDF, "saved as", etc.) we fall through to field_synth
+    which renders pages and detects blank rectangles via OpenCV, then
+    writes a real /AcroForm into the PDF. The returned bytes are the
+    SYNTHESIZED version — callers MUST persist these (not the original)
+    so the saved-on-disk PDF matches the in-memory field tree.
+
+    Raises TemplateUploadError on:
+      - malformed PDF (pypdf can't parse)
+      - encrypted PDF (we don't unlock)
+      - no AcroForm AND field synthesis found zero blanks (genuine scan)
+    """
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
     except Exception as e:
@@ -343,12 +355,32 @@ def validate_pdf(pdf_bytes: bytes) -> PdfReader:
         )
 
     fields = walk_fields(reader)
-    if not fields:
+    if fields:
+        # AcroForm path — the common case. Use existing widget metadata
+        # directly; synth never runs for these uploads.
+        return (reader, pdf_bytes)
+
+    # Flattened-PDF path. Import lazily so the OpenCV/pdfminer deps are only
+    # touched when actually needed (and the import error surface is one
+    # caller, not every test that imports templates).
+    from . import field_synth
+
+    new_bytes, n_added = field_synth.try_synthesize(pdf_bytes)
+    if n_added == 0:
+        # Detection ran but found nothing fillable — genuine scan or
+        # narrative document. User-facing message stays specific so they
+        # know we tried.
         raise TemplateUploadError(
-            "this PDF has no fillable form fields. We only support AcroForm-"
-            "enabled templates today (no scans or flattened PDFs)."
+            "we couldn't find any fillable areas in this PDF. If it's a scan "
+            "or photo, try re-exporting it as a digital PDF first."
         )
-    return reader
+    print(f"field_synth: added {n_added} synthetic fields", flush=True)
+    # Re-open the new bytes through a fresh PdfReader so downstream code sees
+    # the synthesized fields. walk_fields cache for the original reader is
+    # left in place (it's correctly empty) — the new reader is a different
+    # object so the WeakKeyDictionary cache miss is automatic.
+    new_reader = PdfReader(io.BytesIO(new_bytes))
+    return (new_reader, new_bytes)
 
 
 def collect_field_descriptions(reader: PdfReader) -> list[dict]:

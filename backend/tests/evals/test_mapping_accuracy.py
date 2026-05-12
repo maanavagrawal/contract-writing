@@ -68,7 +68,7 @@ async def test_mapping_accuracy(template_name, pdf_filename, target_accuracy):
         pytest.skip(f"Missing fixtures for {template_name}")
 
     pdf_bytes = fixtures_pdf.read_bytes()
-    reader = validate_pdf(pdf_bytes)
+    reader, _persist_bytes = validate_pdf(pdf_bytes)
     field_descs = json.loads(fields_fixture.read_text())
     expected: dict[str, str | None] = json.loads(expected_fixture.read_text())
 

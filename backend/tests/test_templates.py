@@ -40,9 +40,11 @@ LEASE_INVOICE_PDF = REPO_ROOT / "templates" / "pdf" / "2025 Compass Chicagoland 
 
 def test_validate_pdf_accepts_a_real_acroform_pdf():
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
-    reader = validate_pdf(pdf_bytes)
+    reader, persist_bytes = validate_pdf(pdf_bytes)
     from backend.pdf_introspect import walk_fields
     assert len(walk_fields(reader)) > 0
+    # AcroForm path: returned bytes are the original, no synthesis happened.
+    assert persist_bytes == pdf_bytes
 
 
 def test_validate_pdf_rejects_garbage():
@@ -50,8 +52,15 @@ def test_validate_pdf_rejects_garbage():
         validate_pdf(b"this is not a pdf at all")
 
 
-def test_validate_pdf_rejects_pdf_without_acroform(tmp_path: Path):
-    """Build a one-page PDF with NO form fields and confirm we reject it."""
+def test_validate_pdf_synthesizes_fields_for_flattened_pdf(tmp_path: Path):
+    """REGRESSION (2026-05-11 incident): the CAR Buyer Rep PDF arrives
+    via iLovePDF with /AcroForm completely stripped. Previously we rejected
+    it; now field_synth should detect blanks visually and rewrite the bytes
+    with a real /AcroForm so the rest of the pipeline works.
+
+    Built synthetically here: take the Lease Invoice (a real fillable PDF),
+    strip its /AcroForm, and confirm validate_pdf round-trips successfully
+    with synthesized fields."""
     from pypdf import PdfReader, PdfWriter
     src = PdfReader(str(LEASE_INVOICE_PDF))
     writer = PdfWriter(clone_from=src)
@@ -61,7 +70,31 @@ def test_validate_pdf_rejects_pdf_without_acroform(tmp_path: Path):
     out = tmp_path / "no-form.pdf"
     with out.open("wb") as f:
         writer.write(f)
-    with pytest.raises(TemplateUploadError, match="no fillable form fields"):
+
+    reader, persist_bytes = validate_pdf(out.read_bytes())
+    # Synthesis ran: bytes were rewritten (different from original).
+    assert persist_bytes != out.read_bytes()
+    # New reader sees synthesized fields.
+    from backend.pdf_introspect import walk_fields
+    walked = walk_fields(reader)
+    assert len(walked) > 0
+    # Synthesized fields have the f_NNN_NNN naming pattern.
+    assert any(f.dotted_name.startswith("f_") for f in walked)
+
+
+def test_validate_pdf_rejects_blank_narrative_pdf(tmp_path: Path):
+    """Genuine "no fillable areas" case — a PDF that's text-only with no
+    underlines or checkboxes. field_synth runs, detects nothing, and the
+    user gets a clear message rather than a silent fail."""
+    from pypdf import PdfReader, PdfWriter, PageObject
+    # Build a single-page PDF with one text line and no form fields.
+    writer = PdfWriter()
+    page = PageObject.create_blank_page(width=612, height=792)
+    writer.add_page(page)
+    out = tmp_path / "narrative.pdf"
+    with out.open("wb") as f:
+        writer.write(f)
+    with pytest.raises(TemplateUploadError, match="couldn't find any fillable areas"):
         validate_pdf(out.read_bytes())
 
 

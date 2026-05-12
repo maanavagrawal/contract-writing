@@ -795,6 +795,112 @@ async def api_list_templates(
     ])
 
 
+@app.get("/api/admin/interfaze_shadow")
+async def api_admin_interfaze_shadow(
+    user: User = Depends(current_user),
+) -> dict:
+    """Last 50 Interfaze shadow comparisons for the calling agent. Useful as
+    a quick "is Interfaze actually finding more fields than our CV?" audit
+    surface. Scoped to the caller's own uploads — never returns another
+    user's data even though this is an admin-style view."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT template_id, cv_field_count, interfaze_field_count,
+                   interfaze_latency_ms, interfaze_cost_usd_estimate,
+                   interfaze_error, created_at
+            FROM interfaze_shadow_log
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            (user.id,),
+        ).fetchall()
+    # Aggregate stats: median diff, total cost, error rate.
+    diffs = [int(r[2]) - int(r[1]) for r in rows if r[5] is None]
+    total_cost = sum(float(r[4] or 0) for r in rows)
+    error_rate = sum(1 for r in rows if r[5] is not None) / max(len(rows), 1)
+    return {
+        "count": len(rows),
+        "median_diff_interfaze_minus_cv": sorted(diffs)[len(diffs) // 2] if diffs else 0,
+        "total_shadow_cost_usd": round(total_cost, 4),
+        "error_rate": round(error_rate, 3),
+        "recent": [
+            {
+                "template_id": r[0],
+                "cv_fields": r[1],
+                "interfaze_fields": r[2],
+                "latency_ms": r[3],
+                "cost_usd": float(r[4] or 0),
+                "error": r[5],
+                "created_at": r[6].isoformat() if r[6] else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+async def _run_interfaze_shadow(
+    template_id: str,
+    user_id: str,
+    pdf_bytes: bytes,
+    cv_field_count: int,
+    cv_sample: list[dict],
+) -> None:
+    """Background task: run the Interfaze shadow detection and insert a row
+    in interfaze_shadow_log. Never raises into the caller — the upload
+    response has already been sent. Errors here are observability events,
+    not user-visible failures."""
+    try:
+        from . import interfaze_shadow
+        result = await interfaze_shadow.shadow_detect(pdf_bytes)
+        # Field-count diff is a coarse signal — for the "how often does
+        # Interfaze find things CV misses?" question we need per-rect overlap
+        # analysis, which we defer to an offline script. The counts here are
+        # enough to spot whether they're in the same ballpark.
+        cv_sample_json = json.dumps(cv_sample, default=str)[:8000]
+        interfaze_sample_json = json.dumps(
+            [
+                {"page": f.page_idx, "label": f.label[:80], "kind": f.kind, "bbox": list(f.bbox)}
+                for f in result.fields[:10]
+            ],
+            default=str,
+        )[:8000]
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO interfaze_shadow_log (
+                    template_id, user_id,
+                    cv_field_count, interfaze_field_count,
+                    interfaze_latency_ms, interfaze_cost_usd_estimate,
+                    fields_unique_to_cv, fields_unique_to_interfaze,
+                    cv_sample_json, interfaze_sample_json,
+                    interfaze_error
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    template_id, user_id,
+                    cv_field_count, len(result.fields),
+                    result.latency_ms, float(result.cost_usd_estimate),
+                    # No per-rect overlap yet — leave zero. Offline analysis
+                    # can compute this from the sample JSONs.
+                    0, 0,
+                    cv_sample_json, interfaze_sample_json,
+                    result.error,
+                ),
+            )
+        print(
+            f"interfaze_shadow: template={template_id} cv={cv_field_count} "
+            f"ifz={len(result.fields)} latency={result.latency_ms}ms "
+            f"cost=${result.cost_usd_estimate:.4f} err={result.error!r}",
+            flush=True,
+        )
+    except Exception as e:
+        # Catch-all: any DB issue, import failure, or unexpected exception
+        # must not leak. Worst case we lose one shadow log entry.
+        print(f"interfaze_shadow: background task crashed: {type(e).__name__}: {e}", flush=True)
+
+
 @app.post("/api/templates/upload", response_model=TemplateUploadResponse)
 async def api_upload_template(
     title: str = Form(...),
@@ -868,16 +974,28 @@ async def api_upload_template(
             )
 
     try:
-        reader = templates_mod.validate_pdf(pdf_bytes)
+        # validate_pdf may have synthesized an AcroForm for a flattened PDF.
+        # The bytes returned by validate_pdf are the version we MUST persist
+        # to disk — for AcroForm uploads this is the original bytes; for
+        # flattened uploads it's the modified bytes with synthetic widgets.
+        # If we wrote pdf_bytes (original), fill_pdf later would have no
+        # field tree to write /V into.
+        reader, persist_bytes = templates_mod.validate_pdf(pdf_bytes)
     except templates_mod.TemplateUploadError as e:
         raise HTTPException(400, str(e))
+
+    # Detect whether validate_pdf went through the field_synth path. If yes,
+    # fire the Interfaze shadow comparison in the background — never blocks
+    # the user, never affects what they see, just logs Interfaze's view of
+    # the same flattened PDF for offline accuracy review.
+    field_synth_ran = (persist_bytes is not pdf_bytes and persist_bytes != pdf_bytes)
 
     field_descs = templates_mod.collect_field_descriptions(reader)
     if not field_descs:
         raise HTTPException(400, "PDF has no fillable fields after parsing")
 
     template_id = models.new_id()
-    pdf_path = templates_mod.save_uploaded_pdf(pdf_bytes, template_id)
+    pdf_path = templates_mod.save_uploaded_pdf(persist_bytes, template_id)
 
     # Visual crops for fields with no neighbor text — the AI gets a tiny
     # PNG of the area around the field as an extra signal. Without this,
@@ -926,6 +1044,21 @@ async def api_upload_template(
     )
     with get_conn() as conn:
         models.insert_template(conn, template_row)
+
+    # Fire the Interfaze shadow comparison AFTER the user has their response.
+    # asyncio.create_task() with no await — the upload handler returns
+    # immediately, the shadow runs to completion in the background, logs
+    # to interfaze_shadow_log, and quietly drops. Users see zero impact.
+    if field_synth_ran:
+        from . import interfaze_shadow
+        if interfaze_shadow.is_enabled():
+            asyncio.create_task(_run_interfaze_shadow(
+                template_id=template_id,
+                user_id=user.id,
+                pdf_bytes=pdf_bytes,
+                cv_field_count=len(field_descs),
+                cv_sample=field_descs[:10],
+            ))
 
     return TemplateUploadResponse(
         id=template_id,
