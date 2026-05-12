@@ -22,6 +22,24 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 # session-scoped fixture's __exit__ tears down our PG container cleanly.
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
+# Hard-clear RESEND_API_KEY for tests. The auth suite assumes email sends
+# are no-ops (email_send.send logs and returns when the key is unset). A
+# dev .env with a real RESEND key would otherwise make every send_magic_link
+# call hit the Resend API — slow, brittle, and a 503 on rate-limited or
+# unverified-domain sends. The autouse fixture below defends against
+# backend.main's load_dotenv() restoring the key at import time.
+os.environ.pop("RESEND_API_KEY", None)
+
+
+@pytest.fixture(autouse=True)
+def _unset_resend_api_key():
+    """backend/main.py calls load_dotenv() at import time, which may resurrect
+    RESEND_API_KEY from .env after the top-of-module pop above. This autouse
+    fixture re-pops on every test so the auth tests reliably see the dev
+    "log and return" branch in email_send.send."""
+    os.environ.pop("RESEND_API_KEY", None)
+    yield
+
 
 def _docker_available() -> bool:
     """Smoke-test docker. testcontainers raises an opaque error chain if
