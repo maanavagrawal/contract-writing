@@ -277,6 +277,38 @@ def test_handfill_extras_suppressed_from_low_confidence_banner():
     assert surfaced == {"D"}
 
 
+def test_ai_invented_extras_get_coerced_to_canonical():
+    """REGRESSION CAR BRBC 2026-05-12: gpt-5 sometimes proposes
+    template_extras.<X> when <X> obviously signals a known canonical concept
+    ("covered_counties_list_1" → county, "buyers_brokerage_license_number" →
+    agent.brokerage_license). The deterministic post-processing safety net
+    in proposal_to_mapping_file should rewrite these as canonical proposals
+    so they actually fill at runtime instead of pointing at extras that have
+    no value source."""
+    proposal = ProposedMapping(fields=[
+        # AI invented an extra for what is clearly the canonical county field.
+        ProposedField(pdf_field="A", extra_field_name="covered_counties_list_1",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+        # And for brokerage_license (firm-row Lic #).
+        ProposedField(pdf_field="B", extra_field_name="buyers_brokerage_license_number",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+        # And for commission percent.
+        ProposedField(pdf_field="C", extra_field_name="commission_amount_percent",
+                      extra_field_type="money", extra_field_description="x", confidence=9),
+        # Genuinely-unique extra (no canonical exists) should pass through.
+        ProposedField(pdf_field="D", extra_field_name="pet_name",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+    ])
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    assert mapping.fields["A"] == "{county}"
+    assert mapping.fields["B"] == "{agent.brokerage_license}"
+    assert mapping.fields["C"] == "{commission_amount}"
+    # Genuine extras still go through as template_extras references.
+    assert mapping.fields["D"] == "{template_extras.pet_name}"
+
+
 # ============================================================================
 # Neighbor-text extraction (the AI's primary signal for label inference)
 # ============================================================================

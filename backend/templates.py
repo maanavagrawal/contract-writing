@@ -889,6 +889,63 @@ def _is_handfill_extra(extra_field_name: str | None) -> bool:
     return any(tok in name for tok in _HANDFILL_NAME_TOKENS)
 
 
+# Token patterns that map an AI-invented extra_field_name to a canonical path.
+# Applied as a post-processing safety net: when the AI proposes
+# template_extras.<X> but <X> clearly signals a known canonical concept
+# (e.g. "covered_counties_list_1" obviously means county), rewrite it to the
+# canonical path. The mapping prompt tells the AI to use canonical paths for
+# these concepts directly, but on dense legal forms (CAR BRBC 2026-05-12) the
+# AI sometimes invents extras anyway. This deterministic rewrite catches the
+# misses without another AI round-trip.
+#
+# Each rule = (tuple of required token substrings, canonical_path). All tokens
+# in the tuple must appear in the snake_case extra_field_name for the rule to
+# fire. Order matters — more specific rules first.
+_EXTRA_TO_CANONICAL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    # County. "covered_counties_list_1", "county_ies", "counties_field" all → county.
+    (("count",), "county"),
+    # Brokerage license vs agent license. The Firm row's Lic # is brokerage_license;
+    # the salesperson row's Lic # is agent.license. The AI conflates them most often
+    # by emitting brokerage-flavored extras names.
+    (("brokerage", "license"), "agent.brokerage_license"),
+    (("brokerage", "lic"), "agent.brokerage_license"),
+    (("firm", "license"), "agent.brokerage_license"),
+    (("firm", "lic"), "agent.brokerage_license"),
+    # Brokerage firm name itself.
+    (("brokerage", "firm"), "agent.brokerage"),
+    (("broker", "firm"), "agent.brokerage"),
+    # Brokerage address pieces.
+    (("brokerage", "address"), "agent.brokerage_address"),
+    (("broker", "address"), "agent.brokerage_address"),
+    # Property city / state / zip when the AI tries to name them.
+    (("property", "city"), "property.city"),
+    (("property", "state"), "property.state"),
+    (("property", "zip"), "property.zip"),
+    # Commission/compensation.
+    (("compensation", "percent"), "commission_amount"),
+    (("commission", "percent"), "commission_amount"),
+    (("commission", "amount"), "commission_amount"),
+)
+
+
+def _coerce_extra_to_canonical(extra_field_name: str | None) -> str | None:
+    """If an AI-invented extra_field_name clearly signals a known canonical
+    concept, return the canonical path. Otherwise return None.
+
+    Conservative on purpose: rules require ≥1 distinctive token AND we only
+    rewrite when the resulting canonical path is in the allowlist. Used by
+    proposal_to_mapping_file as a deterministic safety net for prompt misses.
+    """
+    if not extra_field_name:
+        return None
+    name = extra_field_name.lower()
+    for tokens, canonical_path in _EXTRA_TO_CANONICAL_RULES:
+        if all(tok in name for tok in tokens):
+            if canonical_path in _CANONICAL_PATH_ALLOWLIST:
+                return canonical_path
+    return None
+
+
 def _sanitize_btn_choices(
     btn_choices: dict[str, str],
     canonical_path: str,
@@ -1013,6 +1070,29 @@ def proposal_to_mapping_file(
                 field_type_by_field[name] = str(fd.get("field_type") or "")
 
     for f in proposal.fields:
+        # Safety net: when the AI proposes template_extras.<X> but <X> clearly
+        # signals a known canonical concept (e.g. "covered_counties_list_1"
+        # obviously means county), rewrite the proposal as canonical. The
+        # mapping prompt tells the AI to do this directly, but on dense legal
+        # forms (CAR BRBC 2026-05-12) it still misses ~5% of these — and
+        # county/brokerage_license/commission are the most common misses.
+        # btn_choices proposals are left alone (those need the literal extra
+        # name in the synthetic_path).
+        coerced = None
+        if f.extra_field_name and not f.btn_choices:
+            coerced = _coerce_extra_to_canonical(f.extra_field_name)
+        if coerced:
+            # Rewrite in-place: treat the rest of the loop as if the AI had
+            # proposed canonical_path=coerced from the start. We use the same
+            # confidence the AI gave the extra; for agent.* paths the looser
+            # threshold applies, otherwise the strict default does.
+            f = f.model_copy(update={
+                "canonical_path": coerced,
+                "extra_field_name": None,
+                "extra_field_type": None,
+                "extra_field_description": None,
+            })
+
         # agent.* paths use a looser gate — see _threshold_for_path. All
         # other paths (and extra_fields) use the strict default.
         is_low_confidence = f.confidence < _threshold_for_path(f.canonical_path)
