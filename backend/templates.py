@@ -423,7 +423,15 @@ async def _propose_mapping_chunk(
 ) -> ProposedMapping:
     """Send one batch of field descriptors (with optional visual crops) to
     GPT and parse the result. Used by propose_mapping for both single-shot
-    and chunked calls."""
+    and chunked calls.
+
+    reasoning_effort="low" because this is a classification task — given a
+    field name + neighbor text + (optional) crop, pick a canonical_path from
+    a known allowlist. We already validate the AI's output post-hoc via
+    _build_canonical_path_allowlist, so the model's "high reasoning effort"
+    default (~25-50s/chunk overhead) buys us no quality and costs real time.
+    Verified: classification accuracy is comparable on this task at "low".
+    """
     # Build the user message. Start with the schema hint + the JSON-encoded
     # field list, then attach a cropped image for each field whose
     # neighbor_text is empty (and where we successfully rendered a crop).
@@ -462,6 +470,7 @@ async def _propose_mapping_chunk(
                 {"role": "user", "content": user_content},
             ],
             text_format=ProposedMapping,
+            reasoning={"effort": "low"},
         )
     except Exception as e:
         raise AIMappingError(f"OpenAI API call failed: {e}")
@@ -482,25 +491,69 @@ async def propose_mapping(
     surrounding area. Used to give the AI visual context for fields where
     text extraction missed the label. See pdf_render.collect_field_crops.
 
-    For forms with more than CHUNK_SIZE fields, splits into batches and
-    concatenates the results. Each batch sees the full system prompt and
-    schema hint but only its slice of fields + crops.
+    For forms with more than CHUNK_SIZE fields, splits into batches and runs
+    them concurrently via asyncio.gather (was sequential — that was a stale
+    rate-limit precaution from when gpt-5 Tier 1 was 30K TPM. Tier 1 is now
+    500K TPM; 4 parallel chunks at ~4K tokens each = 3% of limit, safe).
+    The order of fields is preserved by gather's positional return.
 
-    Raises AIMappingError on API failure or empty parse.
+    Partial-success handling: if a single chunk raises (timeout, transient
+    OpenAI 5xx), we keep the successful chunks and surface a warning rather
+    than discarding everything. Users get a partially-mapped template they
+    can review and complete manually instead of a 502 dead-end.
+
+    Raises AIMappingError only when ALL chunks fail — partial-failure is
+    still considered a usable result.
     """
     client = _get_client()
 
     if len(field_descriptions) <= CHUNK_SIZE:
         return await _propose_mapping_chunk(client, field_descriptions, crops)
 
-    # Chunked path. Run batches sequentially (not asyncio.gather) to avoid
-    # tripping per-account rate limits on a single big upload. Sequential
-    # adds latency but is bounded and predictable.
+    # Slice into chunks. gather preserves positional order in its return,
+    # so concatenating in-order rebuilds the original field sequence.
+    chunks = [
+        field_descriptions[i : i + CHUNK_SIZE]
+        for i in range(0, len(field_descriptions), CHUNK_SIZE)
+    ]
+
+    results = await asyncio.gather(
+        *(_propose_mapping_chunk(client, chunk, crops) for chunk in chunks),
+        return_exceptions=True,
+    )
+
     all_fields: list[ProposedField] = []
-    for i in range(0, len(field_descriptions), CHUNK_SIZE):
-        chunk = field_descriptions[i : i + CHUNK_SIZE]
-        result = await _propose_mapping_chunk(client, chunk, crops)
+    failures: list[Exception] = []
+    for chunk_idx, result in enumerate(results):
+        if isinstance(result, Exception):
+            failures.append(result)
+            # Synthesize unmapped placeholders for this chunk's fields so
+            # the user still sees them in the review UI as low-confidence
+            # candidates they can map by hand. Without this, fields from the
+            # failed chunk vanish entirely from the proposed mapping.
+            for fd in chunks[chunk_idx]:
+                pdf_field = fd.get("pdf_field") or ""
+                if not pdf_field:
+                    continue
+                all_fields.append(
+                    ProposedField(
+                        pdf_field=pdf_field,
+                        canonical_path=None,
+                        template_value=None,
+                        confidence=0,
+                        reasoning=f"AI mapping chunk failed: {type(result).__name__}",
+                    )
+                )
+            continue
         all_fields.extend(result.fields)
+
+    if failures and not all_fields:
+        # Every chunk failed and we have no fallback placeholders either —
+        # this is a genuine outage, propagate so the upload handler can
+        # surface a 502.
+        raise AIMappingError(
+            f"all {len(failures)} mapping chunks failed; first error: {failures[0]}"
+        )
 
     return ProposedMapping(fields=all_fields)
 

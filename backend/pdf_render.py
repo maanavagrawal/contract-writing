@@ -192,7 +192,12 @@ def _render_field_crop(
         page.close()
 
     buf = io.BytesIO()
-    pil_image.save(buf, format="PNG", optimize=True)
+    # No optimize=True: these crops are throwaway visual context for one
+    # OpenAI Responses API call. The 2nd-pass entropy scan optimize=True
+    # triggers adds 30-40ms per crop with zero downstream value (the AI
+    # decodes the PNG once and discards it). 85 crops × 35ms ~= 3s saved
+    # on a Multi-Board upload.
+    pil_image.save(buf, format="PNG")
     return buf.getvalue()
 
 

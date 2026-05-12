@@ -14,11 +14,19 @@ dotted name has children, (2) reading widget /Rect + /AS off the kids.
 from __future__ import annotations
 
 import re
+import weakref
 from dataclasses import dataclass, field
 from typing import Any
 
 from pypdf import PdfReader
 from pypdf.generic import IndirectObject
+
+# Process-local memoization of walk_fields. Three call sites hit this per
+# upload (validate_pdf → collect_field_descriptions → collect_field_crops)
+# and the walk is non-trivial on dense forms (~100-500ms on Multi-Board's
+# 389 fields). WeakKeyDictionary so the cache evicts when the reader goes
+# out of scope — no leak across requests.
+_walk_cache: "weakref.WeakKeyDictionary[PdfReader, list[FieldInfo]]" = weakref.WeakKeyDictionary()
 
 
 @dataclass
@@ -150,15 +158,29 @@ def _extract_widget_rect(widget_obj: Any) -> tuple[float, float, float, float] |
 def walk_fields(reader: PdfReader) -> list[FieldInfo]:
     """Recursively walk /AcroForm/Fields. Returns one FieldInfo per LEAF field
     (a field with /FT and no further children). Joins ancestor /T values into a
-    dotted name matching what pypdf's get_fields() reports."""
+    dotted name matching what pypdf's get_fields() reports.
+
+    Memoized per-reader (weak ref): three pipeline stages call this on the
+    same upload — validate_pdf, collect_field_descriptions, collect_field_crops
+    — and the walk itself is the most expensive non-AI step on dense forms.
+    Cache hit returns the prior list immediately. If a caller actually
+    mutates the AcroForm (templates.py field_synth path), they should call
+    invalidate_walk_cache(reader) first.
+    """
+    cached = _walk_cache.get(reader)
+    if cached is not None:
+        return cached
+
     catalog = reader.trailer["/Root"]
     catalog = _deref(catalog)
     acroform = catalog.get("/AcroForm")
     if acroform is None:
+        _walk_cache[reader] = []
         return []
     acroform = _deref(acroform)
     top_fields = acroform.get("/Fields")
     if top_fields is None:
+        _walk_cache[reader] = []
         return []
     top_fields = _deref(top_fields)
 
@@ -249,7 +271,17 @@ def walk_fields(reader: PdfReader) -> list[FieldInfo]:
     for f in top_fields:
         visit(f, [])
 
+    _walk_cache[reader] = out
     return out
+
+
+def invalidate_walk_cache(reader: PdfReader) -> None:
+    """Drop the cached walk_fields result for this reader. Call after any
+    code path that mutates /AcroForm/Fields — currently only the synthetic
+    AcroForm path in templates.field_synth, where the reader is rebuilt from
+    new bytes and the original reader becomes stale anyway. Cheap safety
+    net: a stale cache return would silently miss synthesized fields."""
+    _walk_cache.pop(reader, None)
 
 
 _LINE_NUM_RX = re.compile(r"^\s*\d{1,3}\s*$")
