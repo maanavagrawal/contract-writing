@@ -197,7 +197,43 @@ Rules:
   - Date fields go to canonical date paths when obvious; otherwise extra_field
     with type=date.
   - Money fields with type=money. Counts/numbers with type=number.
-  - When in doubt between A and B, prefer B (template-specific).
+  - When in doubt between A and B, **prefer A (canonical)**. An extra_field
+    that isn't populated by the agent's transaction notes renders blank on
+    the filled PDF — the user sees an empty form. A canonical path always
+    has data behind it (agent profile + transaction notes).
+
+  CRITICAL: synthetic field names like 'f_NNN_NNN' (page_NNN, index_NNN)
+  come from PDFs that originally had no form fields and were detected
+  visually. The field NAME has no meaning at all — your ONLY signal is
+  the neighbor_text plus the cropped image. For these fields the canonical
+  mapping is even more important because we have no template_extras pulled
+  from the agent's notes for them.
+
+  Common neighbor-text → canonical mappings to PREFER (do not invent
+  template_extras when one of these applies):
+    "Buyer" / "Print Buyer" / "Buyer Name"     → tenant_or_buyer_names
+    "Seller" / "Print Seller" / "Seller Name"  → seller_names
+    "Agent" / "By" + "DRE Lic" / "Broker/Agent" → agent.name
+    "Real Estate Broker (Firm)" / "Brokerage"  → agent.brokerage
+    "DRE Lic #" / "License Number"             → agent.license
+    "MLS #"                                    → agent.mls
+    "Address" + "City" + "State" + "Zip"       → property.address (and unit/city/etc)
+    "Phone"                                    → agent.phone (when broker) or
+                                                  tenant_or_buyer_phone (when buyer)
+    "E-mail" / "Email"                         → agent.email or tenant_or_buyer_email
+    "Date"                                     → today (always — the form fills
+                                                  with the date of generation)
+    "Purchase Price"                           → purchase_price
+    "Earnest Money"                            → earnest_money
+    "Closing"                                  → closing_date
+    "Representation Period Beginning"          → today
+    "Representation Period Ending"             → (extra_field, type=date)
+    "% of acquisition price" / "Amount of Compensation" → commission_amount
+    "Buyer Initial" / "Initial"                → (extra_field, type=text,
+                                                  description='agent initials')
+    Form titles, page numbers, footers, "Produced with..." watermarks
+                                               → (extra_field, type=text,
+                                                  description='static page text')
 
 For /Btn fields ONLY:
   - When you set canonical_path on a /Btn field, you MUST ALSO emit btn_choices.

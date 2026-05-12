@@ -213,6 +213,13 @@ async def extract_fields(
     schema_model = build_dynamic_extraction_model(template_extras or {})
     model_id = MODEL_LIVE if tier == "live" else MODEL_FULL
 
+    # reasoning_effort="low" — same rationale as templates._propose_mapping_chunk.
+    # This is structured extraction with a Pydantic schema; the model is
+    # picking values from text, not reasoning. Default "high" added 20-50s
+    # of overhead per call with zero quality gain.
+    # On gpt-5 the full tier still has access to images and full vocab;
+    # "low" just skips the reasoning pre-pass. Quality verified against
+    # eval suite.
     client = _get_client()
     response = await asyncio.to_thread(
         client.responses.parse,
@@ -222,6 +229,7 @@ async def extract_fields(
             {"role": "user", "content": user_content},
         ],
         text_format=schema_model,
+        reasoning={"effort": "low"},
     )
 
     parsed = response.output_parsed
