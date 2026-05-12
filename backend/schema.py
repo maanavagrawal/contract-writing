@@ -345,3 +345,34 @@ class TemplateUploadResponse(BaseModel):
     # show these so the user knows WHY the template was flagged. Empty list
     # for clean uploads.
     warnings: list[str] = Field(default_factory=list)
+
+
+# ---- Per-agent defaults (workstream C) ----
+
+class DefaultsResponse(BaseModel):
+    """GET /api/me/defaults — flat map of canonical field path → saved value.
+    Empty dict for agents who haven't saved any defaults yet."""
+    defaults: dict[str, str] = Field(default_factory=dict)
+    # Mirror of agent_defaults.ALLOWED_DEFAULT_PATHS so the frontend can render
+    # the "save as default" affordance only on eligible chips without a
+    # second round-trip.
+    allowed_paths: list[str] = Field(default_factory=list)
+
+
+class DefaultPutRequest(BaseModel):
+    """PUT /api/me/defaults/{path} body. Value is a string because we render
+    everything through the existing string-template interpolate.py — number-
+    typed defaults are stringified at write time so reads are uniform."""
+    value: str
+
+
+# ---- Voice transcription (workstream B) ----
+
+class TranscribeResponse(BaseModel):
+    """POST /api/transcribe — what the client appends to the textarea.
+    seconds_used is echoed so the frontend can locally track today's quota
+    without a GET round-trip; cached=true means this was served from the
+    idempotency cache (no billing, no usage increment)."""
+    transcript: str
+    seconds_used: int
+    cached: bool = False

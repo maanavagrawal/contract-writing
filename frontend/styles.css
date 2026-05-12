@@ -1390,3 +1390,218 @@ details.uncertain-fields[open] .uncertain-chevron {
   color: var(--text-muted);
   flex: 1;
 }
+
+/* ============================================================
+ * Workstreams A + B + C: chip strip, voice button.
+ *
+ * Console direction (plan-design-review approved):
+ *   - rectangular chips, 6px radius, JetBrains Mono values
+ *   - 2px left state bar:  transparent (default), amber (low-confidence),
+ *                          neutral (user-edited)
+ *   - flat stone-100 surface, single amber accent
+ * ============================================================ */
+
+.chip-strip {
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.chip-strip-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+}
+.chip-strip-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 4px 2px;
+}
+.chip-strip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  /* Rectangular token, 6px radius. NOT a pill — pills look "tag cloud,"
+   * we want "structured data row." */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+  border: 1px solid var(--border);
+  border-left: 2px solid transparent;  /* state bar lives here */
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text);
+  cursor: text;
+  position: relative;
+  max-width: 100%;
+  text-align: left;
+}
+.chip:hover {
+  border-color: var(--text-muted);
+  border-left-color: var(--text-muted);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.chip-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chip-value {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip-indicator {
+  font-size: 11px;
+  line-height: 1;
+}
+.chip-indicator-default { color: var(--text-muted); }
+.chip-indicator-edited { color: var(--accent-deep); }
+
+/* State bars — one canonical color per state. Edited > default > extracted. */
+.chip.chip-extracted { border-left-color: transparent; }
+.chip.chip-default   { border-left-color: var(--text-muted); }
+.chip.chip-edited    { border-left-color: var(--accent); }
+
+/* The save-as-default mini-button is invisible until hover, so the
+ * chip strip stays calm at rest. */
+.chip-save-default {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  user-select: none;
+}
+.chip:hover .chip-save-default {
+  opacity: 0.85;
+  color: var(--text-muted);
+}
+.chip-save-default:hover,
+.chip-save-default:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
+}
+.chip-save-default svg {
+  display: block;
+}
+
+/* Toast action button (e.g. Undo). Sits to the right of the message,
+ * underlined-link styled — no boxy CTA, fits the calm aesthetic. */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+}
+.toast-action {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.toast-action:hover {
+  color: var(--accent-hover);
+}
+.toast-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Inline edit input — swaps into the chip in place, same width as the
+ * chip's value column so layout doesn't jump. */
+.chip-edit-input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  min-width: 120px;
+  width: 100%;
+}
+
+/* Voice button — sits next to .btn-icon for attach, same weight + shape so
+ * the row reads as one toolbar. */
+.voice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.voice-btn[data-voice-state="recording"],
+.voice-btn[data-voice-state="countdown"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+.voice-btn[data-voice-state="recording"] .voice-btn-label::before,
+.voice-btn[data-voice-state="countdown"] .voice-btn-label::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 4px;
+  vertical-align: middle;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.voice-btn[data-voice-state="countdown"] {
+  background: var(--accent-strong);
+}
+.voice-btn[data-voice-state="permission-denied"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.voice-btn[data-voice-state="transcribing"] {
+  opacity: 0.7;
+  cursor: progress;
+}
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

@@ -23,7 +23,19 @@ from pydantic import BaseModel, Field, create_model
 from .models import ExtraField
 from .schema import TransactionFields
 
-MODEL = "gpt-5"
+# Two-tier model selection. The "full" tier runs on explicit user actions
+# (paste, voice-end, generate-time re-extract) and uses gpt-5 with full
+# reasoning. The "live" tier runs on debounced typing and uses gpt-5-mini
+# with minimal reasoning — same SYSTEM_PROMPT, same dynamic schema, ~10x
+# cheaper. Both return the same Pydantic shape; a tier mismatch can't
+# silently corrupt downstream rendering.
+#
+# Cost gate motivation (see plan-eng-review issue 1.1): a single deal can
+# fire 8-15 debounced extractions during back-and-forth editing. At 2 paying
+# users x 10 deals/wk x 15 extractions/deal = 1200 calls/wk. Full gpt-5 at
+# that volume = real money; live tier keeps it boring.
+MODEL_FULL = "gpt-5"
+MODEL_LIVE = "gpt-5-mini"
 
 SYSTEM_PROMPT = """\
 You extract structured transaction data from a real estate buyer-agent's notes \
@@ -164,6 +176,7 @@ async def extract_fields(
     notes: str,
     images: list[tuple[bytes, str]] | None = None,
     template_extras: dict[str, list[ExtraField]] | None = None,
+    tier: str = "full",
 ) -> BaseModel:
     """
     images: list of (bytes, mime_type) tuples. Empty/None is fine.
@@ -171,6 +184,11 @@ async def extract_fields(
         empty dict (or omitting) gives the original TransactionFields-only
         behavior. Passing one or more templates promotes the schema to
         TransactionFieldsExtended with a template_extras nested object.
+    tier: "full" (gpt-5, default) for user-driven extractions; "live"
+        (gpt-5-mini) for debounced typing-triggered extractions. Same
+        SYSTEM_PROMPT and dynamic schema for both — a tier swap can't change
+        the response shape, only the model behind it. Live tier skips images
+        because the typing-trigger path doesn't add new screenshots.
 
     Returns a Pydantic instance of either TransactionFields or
     TransactionFieldsExtended depending on whether any extras were active.
@@ -183,18 +201,22 @@ async def extract_fields(
     else:
         user_content.append({"type": "input_text", "text": "(No text notes provided.)"})
 
-    for content, mime in images or []:
-        user_content.append({
-            "type": "input_image",
-            "image_url": _image_to_data_url(content, mime),
-        })
+    # Live tier never carries images — debounced-typing path can't add new
+    # screenshots, so we save bandwidth and the heavier vision-tier model.
+    if tier != "live":
+        for content, mime in images or []:
+            user_content.append({
+                "type": "input_image",
+                "image_url": _image_to_data_url(content, mime),
+            })
 
     schema_model = build_dynamic_extraction_model(template_extras or {})
+    model_id = MODEL_LIVE if tier == "live" else MODEL_FULL
 
     client = _get_client()
     response = await asyncio.to_thread(
         client.responses.parse,
-        model=MODEL,
+        model=model_id,
         input=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},

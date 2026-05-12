@@ -2,7 +2,8 @@
 // in-place PDF preview after generation.
 //
 // Flow:
-//   notes + images → POST /api/extract → populate parsed-fields panel
+//   notes + images → debounced live-extract stream → chip strip populates
+//                 → click Extract or hit Cmd+Enter → full extraction → accordion
 //   parsed fields + agent profile + checked docs → POST /api/generate
 //     → right pane swaps from selection-mode to preview-mode with one tab
 //        per generated doc and an <iframe> render of the active doc
@@ -13,6 +14,16 @@
 // overlaying the annotation layer mis-aligns. Browser-built-in PDF viewers
 // (Chrome, Safari, Firefox) honor /NeedAppearances=true and render filled
 // values correctly with zero extra code.
+
+import {
+  initChips,
+  clearChips,
+  applyChipEvent,
+  reconcileFromPayload,
+  updateChipFromField,
+} from "/modules/chips.js";
+import { initVoice } from "/modules/voice.js";
+import { initDefaults, saveAsDefault, removeDefault, isPathDefaulted } from "/modules/defaults.js";
 
 // Templates the user has uploaded. IMPLEMENTED_DOCS is the live set used
 // when validating which keys can be passed to /api/generate.
@@ -75,6 +86,9 @@ const els = {
 };
 
 let attachedImages = []; // File[]
+// True ONLY after the explicit Extract button (full-tier gpt-5). NOT set by
+// the live-tier chip stream — chips are a preview, the user still has to
+// click Extract for the canonical accordion+readiness state.
 let extracted = false;
 
 // Preview-mode state
@@ -161,10 +175,29 @@ async function logout() {
 }
 
 // ---------- toasts ----------
-function toast(message, type = "info", ms = 4000) {
+function toast(message, type = "info", ms = 4000, opts = {}) {
   const el = document.createElement("div");
   el.className = `toast ${type}`;
-  el.textContent = message;
+  // textContent for the message keeps the no-XSS guarantee; the action
+  // button is built via DOM API so its label gets the same treatment.
+  const msgSpan = document.createElement("span");
+  msgSpan.className = "toast-message";
+  msgSpan.textContent = message;
+  el.appendChild(msgSpan);
+  if (opts.action && typeof opts.action.handler === "function" && opts.action.label) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toast-action";
+    btn.textContent = opts.action.label;
+    btn.addEventListener("click", () => {
+      try { opts.action.handler(); } catch (e) { console.error("toast action failed", e); }
+      // Dismiss immediately on action click — user got the feedback they
+      // wanted, no reason to keep the banner up.
+      el.style.opacity = "0";
+      setTimeout(() => el.remove(), 200);
+    });
+    el.appendChild(btn);
+  }
   els.toastContainer.appendChild(el);
   setTimeout(() => {
     el.style.opacity = "0";
@@ -268,6 +301,11 @@ function populateFields(data) {
     if (str) input.classList.add("from-extract");
     else input.classList.remove("from-extract");
   });
+  // Keep the chip strip in lockstep with the accordion. Live-stream events
+  // (workstream A) populate chips one-by-one as they arrive; this is the
+  // catch-up for fields that have a value in the payload but no chip event
+  // landed for them (smaller AI responses, defaults, etc.).
+  reconcileFromPayload(data);
 }
 
 function collectFields() {
@@ -1138,6 +1176,117 @@ function startExtractProgress() {
   };
 }
 
+// ---------- live extraction (workstream A) ----------
+//
+// Debounced, diff-aware live extraction. Strategy from plan-eng-review issue 1.1:
+//   - cheap "live" tier (gpt-5-mini), never carries images
+//   - skip if notes haven't meaningfully changed since last call
+//   - skip if a full extraction is in flight (extractBtn busy)
+//   - one SSE stream per call; previous in-flight stream is aborted
+//
+// State outside of the debounce timer so the diff check survives multiple
+// keypresses without flapping.
+let _lastLiveExtractedNotes = "";
+let _liveDebounceTimer = null;
+let _liveStreamController = null;
+const LIVE_DEBOUNCE_MS = 1200;
+const LIVE_MIN_DIFF_CHARS = 30;
+
+function scheduleLiveExtract() {
+  if (_liveDebounceTimer) clearTimeout(_liveDebounceTimer);
+  _liveDebounceTimer = setTimeout(runLiveExtract, LIVE_DEBOUNCE_MS);
+}
+
+async function runLiveExtract() {
+  // Don't run during a full extraction — it would race with the bigger,
+  // truthier response and reorder chips.
+  if (els.extractBtn?.classList.contains("is-loading")) return;
+
+  const notes = els.notes.value || "";
+  if (!notes.trim()) return;
+
+  // Diff check: skip if the user only added trivial whitespace or fewer
+  // chars than LIVE_MIN_DIFF_CHARS since the last successful live call.
+  const diff = Math.abs(notes.length - _lastLiveExtractedNotes.length);
+  if (diff < LIVE_MIN_DIFF_CHARS && _lastLiveExtractedNotes !== "") return;
+
+  // Cancel any in-flight stream so we don't get out-of-order chip events.
+  if (_liveStreamController) {
+    try { _liveStreamController.abort(); } catch (_) {}
+    _liveStreamController = null;
+  }
+
+  const controller = new AbortController();
+  _liveStreamController = controller;
+
+  const formData = new FormData();
+  formData.append("notes", notes);
+  formData.append("tier", "live");
+  formData.append("active_template_ids", checkedDocKeys().join(","));
+
+  try {
+    const res = await fetch("/api/extract/stream", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) {
+      // Live tier failed quietly — the user still has the full Extract button.
+      return;
+    }
+    // Parse SSE: split on blank-line, dispatch by event:/data: lines.
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        handleSseBlock(block);
+      }
+    }
+    _lastLiveExtractedNotes = notes;
+  } catch (e) {
+    if (e.name !== "AbortError") {
+      console.warn("live extract failed", e);
+    }
+  } finally {
+    if (_liveStreamController === controller) _liveStreamController = null;
+  }
+}
+
+function handleSseBlock(block) {
+  let eventName = "message";
+  let data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) eventName = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (eventName === "chip") {
+    try {
+      applyChipEvent(JSON.parse(data));
+    } catch (e) { console.warn("bad chip event", e); }
+  } else if (eventName === "done") {
+    try {
+      const payload = JSON.parse(data);
+      // Lazily populate the accordion too — the user hasn't clicked Extract
+      // but if they open the parsed-fields panel after a live run, we want
+      // it to reflect what the chips are showing.
+      if (extracted && els.fields && !els.fields.hidden) {
+        populateFields(payload);
+      } else {
+        reconcileFromPayload(payload);
+      }
+    } catch (e) { console.warn("bad done event", e); }
+  } else if (eventName === "error") {
+    console.warn("live extract error event", data);
+  }
+}
+
 async function runExtract() {
   if (!els.notes.value.trim() && attachedImages.length === 0) {
     els.notes.focus();
@@ -1586,6 +1735,120 @@ async function bootstrap() {
   loadProfile();
   loadTemplates();
   updateGenerateBar();
+
+  // Modules (workstreams A, B, C). Defaults must init first so chips.js
+  // can read its allow-list when rendering.
+  await initDefaults({
+    authedFetch,
+    toast,
+    onDefaultsChanged: () => {
+      // Defaults changed (saved or removed) — repaint chips so the passive
+      // tick + save-default affordances refresh.
+      const chipStrip = document.getElementById("chip-strip");
+      if (chipStrip) reconcileFromPayload(collectFields());
+    },
+  });
+
+  const chipStrip = document.getElementById("chip-strip");
+  if (chipStrip) {
+    initChips(chipStrip, {
+      onChipEdit: (path, newValue) => {
+        // Write back into the accordion's data-path input — that is the
+        // canonical source of truth (populateFields/collectFields both go
+        // through it). Then echo back to the chip strip so it shows the
+        // user-edited state.
+        const inputs = document.querySelectorAll(`[data-path="${CSS.escape(path)}"]`);
+        inputs.forEach((input) => {
+          input.value = newValue;
+          input.classList.remove("from-extract");
+        });
+        updateChipFromField(path, newValue);
+        fieldsPendingEdits = true;
+        if (els.saveFieldsBtn) els.saveFieldsBtn.hidden = false;
+        updateGenerateBar();
+      },
+    });
+
+    // "Save as default" affordance is rendered inside each eligible chip;
+    // one delegated handler catches click + keyboard activation across the
+    // whole strip. Uses dataset.saveValue (snapshotted at render time) over
+    // a fresh DOM read so the toast's value matches the tooltip's value
+    // even if the user is mid-edit.
+    const handleSaveDefault = async (target) => {
+      const path = target.dataset.saveDefaultFor;
+      const value = target.dataset.saveValue || "";
+      const label = (target.dataset.saveLabel || path).toLowerCase();
+      if (!path || !value) return;
+      const ok = await saveAsDefault(path, value, { silent: true });
+      if (!ok) return;
+      // Single rich toast: names the field + value so the user knows the
+      // consequence, plus one-click Undo for a 6s window. silent:true on
+      // saveAsDefault and removeDefault prevents duplicate generic toasts.
+      toast(
+        `${label.charAt(0).toUpperCase() + label.slice(1)} will pre-fill as "${value}" on new deals.`,
+        "success",
+        6000,
+        {
+          action: {
+            label: "Undo",
+            // Not silent: removeDefault's own error toast surfaces if the
+            // DELETE fails, otherwise the user gets no feedback at all on
+            // failure (success is implicit from the chip re-rendering).
+            handler: async () => {
+              const undone = await removeDefault(path);
+              if (undone) reconcileFromPayload(collectFields());
+            },
+          },
+        },
+      );
+      // Re-render so the bookmark icon disappears and a passive tick appears.
+      reconcileFromPayload(collectFields());
+    };
+    chipStrip.addEventListener("click", (e) => {
+      const target = e.target.closest("[data-save-default-for]");
+      if (!target) return;
+      e.stopPropagation();  // don't trigger chip edit-mode
+      handleSaveDefault(target);
+    });
+    chipStrip.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const target = e.target.closest("[data-save-default-for]");
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleSaveDefault(target);
+    });
+  }
+
+  const voiceBtn = document.getElementById("voice-btn");
+  if (voiceBtn) {
+    initVoice({
+      button: voiceBtn,
+      textarea: els.notes,
+      authedFetch,
+      toast,
+      onTranscriptAppended: () => {
+        // Voice transcript was just appended to the notes — fire a live
+        // extract immediately (skip the debounce; the user clearly finished
+        // a thought).
+        if (_liveDebounceTimer) clearTimeout(_liveDebounceTimer);
+        runLiveExtract();
+      },
+    });
+  }
+
+  // Debounced live extract on every notes edit. Existing keydown handlers
+  // (Cmd+Enter to fire full extract) keep working — this listener is purely
+  // additive.
+  if (els.notes) {
+    els.notes.addEventListener("input", scheduleLiveExtract);
+    els.notes.addEventListener("paste", () => {
+      // On paste, run immediately (no debounce) — the user just dropped a
+      // full chunk of context in.
+      if (_liveDebounceTimer) clearTimeout(_liveDebounceTimer);
+      setTimeout(runLiveExtract, 0);
+    });
+  }
 }
 
 // Wire the logout button if present.

@@ -986,7 +986,7 @@ def test_extract_only_resolves_caller_template_extras(two_authed_clients, isolat
     alice_template_id = r.json()["id"]
 
     captured = {}
-    async def fake_extract(notes, images=None, template_extras=None):
+    async def fake_extract(notes, images=None, template_extras=None, tier="full"):
         captured["template_extras"] = template_extras
         from backend.schema import TransactionFields
         return TransactionFields()

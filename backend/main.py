@@ -12,6 +12,7 @@ touch User B's templates or transactions.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -21,10 +22,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 load_dotenv()  # picks up env vars from .env in dev; Railway injects via the dashboard
 
+from . import agent_defaults as defaults_mod
 from . import auth, models, templates as templates_mod
 from .auth import User, current_user
 from .db import get_conn, run_migrations
@@ -33,6 +35,8 @@ from .generate import InvalidMapping, UnknownDocument, fill_document
 from .pdf_fill import fill_pdf
 from .pdf_render import collect_field_crops, render_pdf_for_edit
 from .schema import (
+    DefaultPutRequest,
+    DefaultsResponse,
     EditRequest,
     EditResponse,
     ExtraFieldDTO,
@@ -47,6 +51,7 @@ from .schema import (
     TemplateListItem,
     TemplateListResponse,
     TemplateUploadResponse,
+    TranscribeResponse,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -194,11 +199,54 @@ async def api_auth_me(user: User = Depends(current_user)):
 
 # ---------------------- APP ROUTES ----------------------
 
+def _read_dotted(obj: dict, path: str):
+    """Walk a dotted path through nested dicts. Returns None on miss. Tiny
+    helper used by /api/extract to detect which defaults actually filled a
+    previously-empty slot."""
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+        if cur is None:
+            return None
+    return cur
+
+
+def _merge_defaults_into(result: dict, defaults: dict[str, str]) -> dict:
+    """Merge per-agent defaults into an extraction result.
+
+    Precedence (from plan-eng-review issue 1.4):
+        extracted value > saved default > null
+
+    Dotted paths walk nested dicts; intermediate keys are created if missing.
+    A default is skipped when the target slot already has a truthy value —
+    the user's deal-specific extracted value always wins.
+    """
+    if not defaults:
+        return result
+    for path, value in defaults.items():
+        parts = path.split(".")
+        cur = result
+        for part in parts[:-1]:
+            existing = cur.get(part)
+            if not isinstance(existing, dict):
+                cur[part] = {}
+            cur = cur[part]
+        leaf = parts[-1]
+        if cur.get(leaf):
+            # Extracted value (or earlier default) already won — don't stomp.
+            continue
+        cur[leaf] = value
+    return result
+
+
 @app.post("/api/extract")
 async def api_extract(
     notes: str = Form(""),
     images: list[UploadFile] = File(default_factory=list),
     active_template_ids: str = Form(""),
+    tier: str = Form("full"),
     user: User = Depends(current_user),
 ) -> dict:
     """Extract structured TransactionFields (and optional template_extras
@@ -207,9 +255,20 @@ async def api_extract(
     Active template_ids are scoped to the caller's own templates only —
     passing another user's template id silently drops it (template_extras
     becomes empty for that key).
+
+    tier="full" (default) uses gpt-5 and accepts images; tier="live" uses
+    gpt-5-mini and ignores images, for cheap debounced typing-triggered
+    extractions. Both return the same Pydantic shape.
+
+    Response includes per-agent defaults merged in via the precedence rule
+    extracted > default > null. Frontend can distinguish defaults from
+    extracted values via the returned `_defaults_applied` list (which
+    canonical paths were filled from defaults).
     """
     if not notes.strip() and not images:
         raise HTTPException(400, "must provide notes or at least one image")
+    if tier not in ("full", "live"):
+        raise HTTPException(400, "tier must be 'full' or 'live'")
 
     image_payloads: list[tuple[bytes, str]] = []
     for upload in images:
@@ -234,11 +293,350 @@ async def api_extract(
             notes=notes,
             images=image_payloads,
             template_extras=template_extras,
+            tier=tier,
         )
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 
-    return result.model_dump(mode="json")
+    payload = result.model_dump(mode="json")
+
+    # Server-side defaults merge — agent never sees defaults that don't apply,
+    # frontend renders the "filled from default" tick from _defaults_applied.
+    with get_conn() as conn:
+        defaults = defaults_mod.list_defaults(conn, user.id)
+    if defaults:
+        before_snapshot = {p: _read_dotted(payload, p) for p in defaults}
+        _merge_defaults_into(payload, defaults)
+        applied = [
+            p for p, before in before_snapshot.items()
+            if not before and _read_dotted(payload, p)
+        ]
+        if applied:
+            payload["_defaults_applied"] = applied
+
+    return payload
+
+
+# Chip strip is anchored on this canonical subset. The order is the order
+# chips appear in the UI — most-important first. Anything not in this list
+# still extracts (and shows in the accordion), but doesn't get a chip.
+# Keep this in sync with frontend/modules/chips.js CHIP_ORDER.
+_CHIP_FIELDS: tuple[tuple[str, str], ...] = (
+    ("property.address", "Address"),
+    ("property.unit",    "Unit"),
+    ("transaction_type", "Type"),
+    ("purchase_price",   "Price"),
+    ("monthly_rent",     "Rent"),
+    ("earnest_money",    "Earnest"),
+    ("closing_date",     "Closing"),
+    ("lease_start",      "Lease start"),
+    ("lease_end",        "Lease end"),
+    ("tenant_or_buyer_names", "Buyer/Tenant"),
+    ("seller_names",     "Seller"),
+    ("loan_type",        "Loan"),
+    ("loan_rate_type",   "Rate"),
+    ("loan_percent_of_price", "LTV %"),
+    ("loan_amortization_years", "Term"),
+    ("escrowee",         "Escrowee"),
+    ("commission_amount", "Commission"),
+    ("county",           "County"),
+)
+
+
+def _format_chip_value(v) -> str:
+    """Render a chip value for display. Lists join with ' & '; everything
+    else is str()'d. Strips whitespace. Empty list → empty string."""
+    if v is None:
+        return ""
+    if isinstance(v, list):
+        if not v:
+            return ""
+        parts = [str(x).strip() for x in v if x]
+        if not parts:
+            return ""
+        if len(parts) == 1:
+            return parts[0]
+        if len(parts) == 2:
+            return f"{parts[0]} & {parts[1]}"
+        return ", ".join(parts)
+    return str(v).strip()
+
+
+@app.post("/api/extract/stream")
+async def api_extract_stream(
+    notes: str = Form(""),
+    images: list[UploadFile] = File(default_factory=list),
+    active_template_ids: str = Form(""),
+    tier: str = Form("live"),
+    user: User = Depends(current_user),
+) -> StreamingResponse:
+    """Streaming variant of /api/extract. Server-Sent Events; client receives
+    one `chip` event per canonical field, then a final `done` event with the
+    full payload (so the frontend can also populate the parsed-fields
+    accordion).
+
+    Streaming choice (plan-eng-review issue 1.2): fake-stream from server.
+    We collect the full Pydantic result first, then iterate through
+    _CHIP_FIELDS, emitting events with a 40ms gap so the UI fades chips in
+    one-by-one. Trade-off: no perceived latency reduction for the FIRST
+    chip vs /api/extract, but every subsequent chip lands in <100ms of the
+    one before it — that's the perception we want.
+    """
+    if not notes.strip() and not images:
+        raise HTTPException(400, "must provide notes or at least one image")
+    if tier not in ("full", "live"):
+        raise HTTPException(400, "tier must be 'full' or 'live'")
+
+    image_payloads: list[tuple[bytes, str]] = []
+    for upload in images:
+        if not upload.content_type or not upload.content_type.startswith("image/"):
+            raise HTTPException(400, f"unsupported file type: {upload.content_type}")
+        content = await upload.read()
+        if not content:
+            continue
+        image_payloads.append((content, upload.content_type))
+
+    template_extras: dict[str, list] = {}
+    ids = [s.strip() for s in active_template_ids.split(",") if s.strip()]
+    with get_conn() as conn:
+        if ids:
+            for tpl_id in ids:
+                tpl = models.get_template(conn, tpl_id, user_id=user.id)
+                if tpl and tpl.extra_fields:
+                    template_extras[tpl.id] = tpl.extra_fields
+        # Per-minute rate limit. Reject before kicking off an OpenAI call —
+        # a misbehaving client with a tight retry loop can otherwise burn
+        # dollars on gpt-5-mini at the live tier. See agent_defaults.py
+        # LIVE_EXTRACT_PER_MINUTE_CAP.
+        if not defaults_mod.check_and_record_extract(conn, user.id):
+            raise HTTPException(
+                429,
+                f"live extract rate limit exceeded "
+                f"({defaults_mod.LIVE_EXTRACT_PER_MINUTE_CAP}/min)",
+            )
+
+    user_id = user.id
+
+    async def event_stream():
+        # Initial ping so proxies (Railway, browsers) flush the response head
+        # immediately and the client sees the connection is alive. Without
+        # this the first 3-8 seconds look identical to a hung request.
+        yield "event: started\ndata: {}\n\n"
+
+        try:
+            result = await extract_fields(
+                notes=notes,
+                images=image_payloads,
+                template_extras=template_extras,
+                tier=tier,
+            )
+        except RuntimeError as e:
+            yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
+            return
+        except asyncio.CancelledError:
+            # Client closed the SSE connection mid-call. Don't log loudly —
+            # the live-extract pipeline aborts frequently when the user types
+            # mid-stream. Letting the exception propagate cancels the
+            # generator cleanly.
+            raise
+
+        payload = result.model_dump(mode="json")
+
+        # IMPORTANT: list_defaults runs AFTER extract_fields (not before).
+        # Holding a pool connection across the 3-8s OpenAI call would block
+        # other request handlers and exhaust the 10-connection pool under
+        # concurrent intake sessions.
+        with get_conn() as conn:
+            saved_defaults = defaults_mod.list_defaults(conn, user_id)
+        defaults_applied: list[str] = []
+        if saved_defaults:
+            before_snapshot = {p: _read_dotted(payload, p) for p in saved_defaults}
+            _merge_defaults_into(payload, saved_defaults)
+            defaults_applied = [
+                p for p, before in before_snapshot.items()
+                if not before and _read_dotted(payload, p)
+            ]
+
+        defaults_set = set(defaults_applied)
+
+        # Emit one event per chip-eligible field that has a value. Empty
+        # slots are skipped — the chip strip doesn't render placeholder
+        # chips, it just shows what we actually have.
+        for path, label in _CHIP_FIELDS:
+            value = _read_dotted(payload, path)
+            display = _format_chip_value(value)
+            if not display:
+                continue
+            chip = {
+                "path": path,
+                "label": label,
+                "value": display,
+                "source": "default" if path in defaults_set else "extracted",
+            }
+            yield f"event: chip\ndata: {json.dumps(chip)}\n\n"
+            await asyncio.sleep(0.04)
+
+        # Final done event carries the full payload (canonical + template_extras
+        # + _defaults_applied) so the frontend can populate the accordion
+        # and not have to re-call /api/extract.
+        if defaults_applied:
+            payload["_defaults_applied"] = defaults_applied
+        yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        # Disable any nginx-style buffering on the way out; Railway's edge
+        # proxy honors this hint.
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
+# ---- Per-agent defaults endpoints (workstream C) ----
+
+@app.get("/api/me/defaults", response_model=DefaultsResponse)
+async def api_get_defaults(user: User = Depends(current_user)) -> DefaultsResponse:
+    """Return the calling agent's saved defaults plus the allow-list of
+    eligible paths. Frontend uses the allow-list to render "save as default"
+    affordances only where it makes sense."""
+    with get_conn() as conn:
+        defaults = defaults_mod.list_defaults(conn, user.id)
+    return DefaultsResponse(
+        defaults=defaults,
+        allowed_paths=sorted(defaults_mod.ALLOWED_DEFAULT_PATHS),
+    )
+
+
+@app.put("/api/me/defaults/{field_path:path}")
+async def api_put_default(
+    field_path: str,
+    req: DefaultPutRequest,
+    user: User = Depends(current_user),
+) -> dict:
+    """Save or update one default. Returns 400 for paths outside the
+    allow-list; never silently drops (helps the frontend catch typos).
+    Always scoped to the caller — there is no admin route that could write
+    to another user's row."""
+    if not defaults_mod.is_allowed_default_path(field_path):
+        raise HTTPException(400, f"field_path not eligible for defaults: {field_path}")
+    if not req.value:
+        raise HTTPException(400, "value must not be empty (use DELETE to clear)")
+    with get_conn() as conn:
+        defaults_mod.upsert_default(conn, user.id, field_path, req.value)
+    return {"ok": True, "field_path": field_path}
+
+
+@app.delete("/api/me/defaults/{field_path:path}", status_code=204)
+async def api_delete_default(
+    field_path: str,
+    user: User = Depends(current_user),
+) -> Response:
+    """Remove one default. Idempotent — deleting a missing row is fine, the
+    response is 204 either way. Allow-list-gated to keep the DELETE/PUT
+    response shape consistent so the only signal an attacker can extract by
+    probing is 'this path is in the allow-list', which is also returned by
+    GET /api/me/defaults — no new information leaked."""
+    if not defaults_mod.is_allowed_default_path(field_path):
+        raise HTTPException(400, f"field_path not eligible for defaults: {field_path}")
+    with get_conn() as conn:
+        defaults_mod.delete_default(conn, user.id, field_path)
+    return Response(status_code=204)
+
+
+# ---- Voice transcription (workstream B) ----
+
+@app.post("/api/transcribe", response_model=TranscribeResponse)
+async def api_transcribe(
+    audio: UploadFile = File(...),
+    request_id: str = Form(...),
+    duration_seconds: int = Form(...),
+    user: User = Depends(current_user),
+) -> TranscribeResponse:
+    """Transcribe a short audio clip via Whisper.
+
+    Hardening (plan-eng-review issue 1.3):
+      - Server-side caps: 5 MB body, 100 s audio duration
+      - Daily quota: 600 s of audio per agent per day (UTC day boundary)
+      - Idempotency: same (user, request_id) within 60 s returns the cached
+        transcript without re-billing
+      - 502 on Whisper API failures with a clear error body
+    """
+    if not audio.content_type or not audio.content_type.startswith("audio/"):
+        raise HTTPException(400, f"unsupported file type: {audio.content_type}")
+    if duration_seconds <= 0 or duration_seconds > defaults_mod.WHISPER_MAX_AUDIO_SECONDS:
+        raise HTTPException(
+            422,
+            f"duration must be 1..{defaults_mod.WHISPER_MAX_AUDIO_SECONDS} seconds",
+        )
+
+    body = await audio.read()
+    if not body:
+        raise HTTPException(400, "audio body was empty")
+    if len(body) > defaults_mod.WHISPER_MAX_AUDIO_BYTES:
+        raise HTTPException(
+            413,
+            f"audio exceeds {defaults_mod.WHISPER_MAX_AUDIO_BYTES // (1024 * 1024)} MB limit",
+        )
+
+    with get_conn() as conn:
+        # Idempotency check first — a retry from a flaky mobile network must
+        # not redo the call or re-increment the quota.
+        cached = defaults_mod.get_cached_transcript(conn, user.id, request_id)
+        if cached is not None:
+            seconds_today, _ = defaults_mod.get_today_usage(conn, user.id)
+            return TranscribeResponse(
+                transcript=cached,
+                seconds_used=seconds_today,
+                cached=True,
+            )
+
+        # Quota check — the daily seconds cap is the cost guard. Reject before
+        # making the Whisper call so an over-cap user doesn't pay even once.
+        seconds_today, _ = defaults_mod.get_today_usage(conn, user.id)
+        if seconds_today + duration_seconds > defaults_mod.WHISPER_DAILY_SECONDS_CAP:
+            raise HTTPException(
+                429,
+                f"daily voice cap reached "
+                f"({seconds_today}/{defaults_mod.WHISPER_DAILY_SECONDS_CAP}s used)",
+            )
+
+    # The Whisper call runs OUTSIDE the get_conn block — holding a pool
+    # connection across an external HTTP call would block other request
+    # handlers for the same user.
+    try:
+        from openai import OpenAI
+        import os
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        # Whisper SDK needs a file-like object with a name (it sniffs the
+        # extension to pick a decoder). Build one from the upload.
+        suffix = (audio.filename or "audio.webm").rsplit(".", 1)[-1] if "." in (audio.filename or "") else "webm"
+        file_obj = io.BytesIO(body)
+        file_obj.name = f"audio.{suffix}"
+        result = await asyncio.to_thread(
+            client.audio.transcriptions.create,
+            model="whisper-1",
+            file=file_obj,
+        )
+        transcript = (result.text or "").strip()
+    except KeyError:
+        raise HTTPException(500, "OPENAI_API_KEY not set")
+    except Exception as e:
+        raise HTTPException(502, f"transcription provider failed: {type(e).__name__}")
+
+    # Record usage + cache the transcript only on success. Both go in one
+    # short DB call so the request_id can't end up cached without quota
+    # being charged or vice versa.
+    with get_conn() as conn:
+        with conn.transaction():
+            defaults_mod.record_usage(conn, user.id, duration_seconds)
+            defaults_mod.cache_transcript(conn, user.id, request_id, transcript)
+        new_seconds, _ = defaults_mod.get_today_usage(conn, user.id)
+
+    return TranscribeResponse(
+        transcript=transcript,
+        seconds_used=new_seconds,
+        cached=False,
+    )
 
 
 @app.post("/api/generate", response_model=GenerateResponse)

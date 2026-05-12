@@ -134,7 +134,7 @@ def test_extract_endpoint_passes_active_template_extras(authed_client, monkeypat
         models.insert_template(conn, custom)
 
     captured = {}
-    async def fake_extract(notes, images=None, template_extras=None):
+    async def fake_extract(notes, images=None, template_extras=None, tier="full"):
         captured["notes"] = notes
         captured["template_extras"] = template_extras
         return TransactionFields(transaction_type="lease")
@@ -155,7 +155,7 @@ def test_extract_endpoint_ignores_unknown_template_ids(authed_client, monkeypatc
     We silently ignore them — never 400 on the extract path."""
     from backend import main
     captured = {}
-    async def fake_extract(notes, images=None, template_extras=None):
+    async def fake_extract(notes, images=None, template_extras=None, tier="full"):
         captured["template_extras"] = template_extras
         return TransactionFields()
 
@@ -174,7 +174,7 @@ def test_extract_endpoint_response_is_dict_not_pydantic_model(authed_client, mon
     template_extras key) makes it through FastAPI without response_model
     coercion."""
     from backend import main
-    async def fake_extract(notes, images=None, template_extras=None):
+    async def fake_extract(notes, images=None, template_extras=None, tier="full"):
         return TransactionFields(transaction_type="lease", monthly_rent="$3000")
 
     monkeypatch.setattr(main, "extract_fields", fake_extract)
