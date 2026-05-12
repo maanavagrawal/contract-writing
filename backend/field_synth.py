@@ -161,32 +161,38 @@ def _detect_underlines_px(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
             continue
         candidates.append((x, y, w, h))
 
-    # Second pass: drop lines that are part of a vertical stack of similar
-    # horizontal lines — those are table row borders within a single cell
-    # column, not real form blanks. A real form blank is a one-off mark; a
-    # table renders 3+ identical-width horizontal lines stacked vertically.
+    # Second pass: drop lines that are part of a CELL-BORDER PAIR — two
+    # horizontal lines that overlap in x and sit <30 px apart vertically.
+    # A table's row separator is one drawn line, but where two cells stack
+    # vertically the rasterizer produces a "doublet": bottom border of the
+    # upper cell + top border of the lower cell, typically 1-30 px apart.
+    # Real form blanks (signature lines, "City: ___" blanks) stand alone:
+    # the next horizontal mark is the next row, typically 40+ px away.
     #
-    # Stack criteria: same x-start within 20 px AND same width within 30 px
-    # AND vertical neighbor within 200 px. Need ≥2 OTHER lines matching the
-    # criteria (so the current line + 2 neighbors = 3-line stack).
-    def is_stacked(target: tuple[int, int, int, int]) -> bool:
-        tx, ty, tw, _th = target
-        matches = 0
-        for ox, oy, ow, _oh in candidates:
+    # This survived the CAR BRBC table (page 3, 24 candidates with several
+    # cell-border doublets at 24-28 px) AND the PRBS signature stack (page
+    # 9, 19 candidates all ≥39 px from their nearest neighbor) without
+    # killing the signature lines. Earlier "vertical stack" filter was too
+    # aggressive — signature forms have legitimate stacks of similar
+    # blanks.
+    def is_paired_with_border(target: tuple[int, int, int, int]) -> bool:
+        tx, ty, tw, _ = target
+        for ox, oy, ow, _ in candidates:
             if (tx, ty) == (ox, oy):
                 continue
-            if abs(tx - ox) > 20 or abs(tw - ow) > 30:
+            # Horizontal overlap must be substantial (≥50 px) — the two
+            # lines must be on the same row of a stacked cell, not just
+            # incidentally close in y on different parts of the page.
+            overlap_x = max(0, min(tx + tw, ox + ow) - max(tx, ox))
+            if overlap_x < 50:
                 continue
-            if abs(ty - oy) > 200:
-                continue
-            matches += 1
-            if matches >= 2:
+            if abs(ty - oy) < 30:
                 return True
         return False
 
     out: list[tuple[int, int, int, int]] = []
     for r in candidates:
-        if is_stacked(r):
+        if is_paired_with_border(r):
             continue
         x, y, w, h = r
         # Synthesize a "field rect" sitting on top of the underline. The

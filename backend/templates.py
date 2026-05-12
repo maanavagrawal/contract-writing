@@ -42,14 +42,21 @@ from .models import (
 from .pdf_introspect import extract_neighbor_text, walk_fields
 from .schema import BtnChoice, MappingFile, MappingMeta
 
-# gpt-5-mini for mapping. The task is classification (pick canonical_path
-# from a fixed allowlist + confidence score given field_name + neighbor_text
-# + optional crop), not open-ended reasoning. extract.py uses mini for the
-# same shape of task and proves quality parity. On the CAR PDF this swap
-# alone takes propose_mapping from ~115s to ~25s — by far the biggest win
-# in upload-latency optimization. Quality is the same as gpt-5 in practice
-# because the allowlist + post-hoc validator already constrains output.
-MODEL = "gpt-5-mini"
+# gpt-5 for mapping. We trialed gpt-5-mini for upload-latency wins (115s → 25s)
+# but the QA pass 2026-05-12 caught two reliability problems on the 14-page
+# CAR BRBC:
+#   1. Row-shuffling: license # landed in the Agent name field, "Compass"
+#      in the DRE Lic # field. Same row, adjacent cells, mini got them
+#      swapped.
+#   2. Over-inventing template_extras: 74 of 144 fields got AI-invented
+#      paths like "agent_signature_by_line_1" instead of the canonical
+#      agent.name / agent.brokerage / agent.brokerage_address that
+#      explicitly exist in the allowlist.
+# Mini handled the simpler Multi-Board / lease forms fine but is too weak
+# on dense multi-page legal contracts. The 50s of extra upload time is
+# acceptable for a one-time per-template cost; mapping accuracy is paid
+# every time a user generates a contract.
+MODEL = "gpt-5"
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -197,50 +204,104 @@ You decide ONE of:
 
 Rules:
   - Map every field. Do not skip any.
-  - Prefer canonical paths when the neighbor text obviously matches a known
-    field. "Tenant Email" → tenant_or_buyer_email. "Lease Start" → lease_start.
   - For radio groups (/Btn with multiple states) and dropdowns (/Ch), still
     map to canonical_path when sensible.
   - Date fields go to canonical date paths when obvious; otherwise extra_field
     with type=date.
   - Money fields with type=money. Counts/numbers with type=number.
-  - When in doubt between A and B, **prefer A (canonical)**. An extra_field
-    that isn't populated by the agent's transaction notes renders blank on
-    the filled PDF — the user sees an empty form. A canonical path always
-    has data behind it (agent profile + transaction notes).
 
-  CRITICAL: synthetic field names like 'f_NNN_NNN' (page_NNN, index_NNN)
-  come from PDFs that originally had no form fields and were detected
-  visually. The field NAME has no meaning at all — your ONLY signal is
-  the neighbor_text plus the cropped image. For these fields the canonical
-  mapping is even more important because we have no template_extras pulled
-  from the agent's notes for them.
+  CRITICAL: synthetic field names like 'f_NNN_NNN' come from PDFs that
+  originally had no form fields and were detected visually. The field NAME
+  has no meaning at all — your ONLY signal is the neighbor_text plus the
+  cropped image. For these fields canonical mapping is critical because
+  template_extras values typically come from the agent's notes, and most
+  synthesized fields don't appear in notes (they're signature blocks,
+  broker info, etc. — data lives in the agent profile, not notes).
 
-  Common neighbor-text → canonical mappings to PREFER (do not invent
-  template_extras when one of these applies):
-    "Buyer" / "Print Buyer" / "Buyer Name"     → tenant_or_buyer_names
-    "Seller" / "Print Seller" / "Seller Name"  → seller_names
-    "Agent" / "By" + "DRE Lic" / "Broker/Agent" → agent.name
-    "Real Estate Broker (Firm)" / "Brokerage"  → agent.brokerage
-    "DRE Lic #" / "License Number"             → agent.license
+  ============ CANONICAL ROUTING (USE THESE FIRST) ============
+
+  Before emitting ANY canonical_path="template_extras.X", check this
+  list. If the neighbor text matches a row below, USE the canonical path
+  on the right — do NOT invent a template_extras name. Inventing extras
+  for fields that have a canonical home produces fields the system can
+  never fill, because no value source feeds an AI-named extra unless the
+  agent's notes happened to mention it.
+
+  Broker / signature block (where you fail most often):
+    "Real Estate Broker (Firm)" / "Brokerage" / "Buyer's Brokerage Firm" /
+      "Seller's Brokerage Firm" / "Firm" + "DRE Lic"
+                                               → agent.brokerage
+    "Brokerage" + Lic # next to it / Lic # right of firm name
+                                               → agent.brokerage_license
+    "By" (right after broker firm row) / "By (Broker/Agent)" / "Agent" /
+      "Broker/Agent" / "Salesperson or Broker-Associate"
+                                               → agent.name
+    "DRE Lic. #" / "DRE Lic #" / "License Number" (when next to "By" or
+      "Agent" name, NOT next to the firm)      → agent.license
+    "Address" + "City" + "State" + "Zip" in broker block
+                                               → agent.brokerage_address
+    "Tel." / "Phone" (broker block)            → agent.phone
+    "E-mail" / "Email" (broker block)          → agent.email
     "MLS #"                                    → agent.mls
-    "Address" + "City" + "State" + "Zip"       → property.address (and unit/city/etc)
-    "Phone"                                    → agent.phone (when broker) or
-                                                  tenant_or_buyer_phone (when buyer)
-    "E-mail" / "Email"                         → agent.email or tenant_or_buyer_email
-    "Date"                                     → today (always — the form fills
-                                                  with the date of generation)
+
+  Same-row disambiguation tip: the broker signature block has TWO
+  Name+License pairs per row: (Firm + Firm-License) and (Agent + Agent-
+  License). The Firm row says "Real Estate Broker (Firm)" or
+  "Brokerage"; the Agent row says "By" or has a person's title. Treat
+  these as DIFFERENT canonical paths (brokerage vs name, brokerage_license
+  vs license). Never put agent.name on a Firm row or agent.brokerage on
+  a By row. The crop image is the tie-breaker when neighbor text is
+  ambiguous.
+
+  Property:
+    "Address" + "City" + "State" + "Zip" in property block (top of form)
+                                               → property.address / .city / .state / .zip
+    "Unit #" / "Unit Number"                   → property.unit
+    "County(ies)" / "County"                   → county
+    "City(ies)" (singular — multiple cities is a multi-property field)
+                                               → property.city (single city) or
+                                                  template_extras (multi-city list)
+
+  Parties:
+    "Buyer" / "Print Buyer" / "Buyer Name(s)"  → tenant_or_buyer_names
+    "Seller" / "Print Seller" / "Seller Name"  → seller_names
+
+  Dates / amounts:
+    "Date Prepared" / "Date" (signature row)   → today
+    "Representation Period Beginning"          → today
+    "Representation Period Ending"             → (extra_field, type=date,
+                                                  description='representation
+                                                  period end date')
+    "% of acquisition price" / "Amount of Compensation" / "Compensation %"
+                                               → commission_amount
     "Purchase Price"                           → purchase_price
     "Earnest Money"                            → earnest_money
     "Closing"                                  → closing_date
-    "Representation Period Beginning"          → today
-    "Representation Period Ending"             → (extra_field, type=date)
-    "% of acquisition price" / "Amount of Compensation" → commission_amount
-    "Buyer Initial" / "Initial"                → (extra_field, type=text,
-                                                  description='agent initials')
-    Form titles, page numbers, footers, "Produced with..." watermarks
+
+  Hand-fill (sign-time, never auto-filled):
+    "Buyer Initial" / "Initial" / "Broker/Agent Initials"
                                                → (extra_field, type=text,
+                                                  description='agent initials')
+    Sign-date lines, signature lines           → (extra_field, type=text,
+                                                  description='handwritten at signing')
+    Form titles, page numbers, footers, "Produced with..." watermarks,
+      copyright text, paragraph headings       → (extra_field, type=text,
                                                   description='static page text')
+
+  ============ WHEN TO USE template_extras ============
+
+  Use template_extras ONLY when:
+    1. The neighbor text describes a real piece of transaction data that
+       has NO canonical path AND would plausibly appear in agent notes
+       (e.g., "Pet name", "Garage spaces"), OR
+    2. The field is decorative/static and you're using
+       description='static page text' to mark it as non-fillable, OR
+    3. The field is a sign-time hand-fill (initials, sign-dates).
+
+  Do NOT use template_extras for: anything in the canonical routing table
+  above. If neighbor text is empty AND the crop shows a broker block /
+  property block / party block field, infer the canonical path from
+  position — the AI's job is to read the form, not invent new buckets.
 
 For /Btn fields ONLY:
   - When you set canonical_path on a /Btn field, you MUST ALSO emit btn_choices.
