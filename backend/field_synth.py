@@ -137,17 +137,58 @@ def _detect_underlines_px(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
     h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 1))
     horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN, h_kernel, iterations=1)
     contours, _ = cv2.findContours(horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    out: list[tuple[int, int, int, int]] = []
+    # Page width in pixels. We use it to gate out page-wide table cell borders
+    # — those span ~90% of the page and are visually indistinguishable from
+    # underlines under morphological detection. CAR BRBC bug 2026-05-12:
+    # page 3 is a full-width table where each cell border was getting promoted
+    # to a text field, so "Alameda" landed in the B(3) row instead of B(2).
+    page_w_px = gray.shape[1]
+    # 75% of page width: anything wider than this is a table border, page
+    # divider, or rule. The widest legitimate form blank we've seen is
+    # Multi-Board's full-line "Additional Provisions" field at ~70% width.
+    max_blank_px = int(page_w_px * 0.75)
+    candidates: list[tuple[int, int, int, int]] = []
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         # Filters:
         #   width  >= 50 px (~18 PDF pt) — real fields
+        #   width  <= 75% of page width  — exclude table borders / page rules
         #   height <= 12 px (~4 PDF pt)  — line, not a paragraph
         #   aspect ratio >= 8            — wide+thin, not a square
-        if w < 50 or h > 12:
+        if w < 50 or w > max_blank_px or h > 12:
             continue
         if w / max(h, 1) < 8:
             continue
+        candidates.append((x, y, w, h))
+
+    # Second pass: drop lines that are part of a vertical stack of similar
+    # horizontal lines — those are table row borders within a single cell
+    # column, not real form blanks. A real form blank is a one-off mark; a
+    # table renders 3+ identical-width horizontal lines stacked vertically.
+    #
+    # Stack criteria: same x-start within 20 px AND same width within 30 px
+    # AND vertical neighbor within 200 px. Need ≥2 OTHER lines matching the
+    # criteria (so the current line + 2 neighbors = 3-line stack).
+    def is_stacked(target: tuple[int, int, int, int]) -> bool:
+        tx, ty, tw, _th = target
+        matches = 0
+        for ox, oy, ow, _oh in candidates:
+            if (tx, ty) == (ox, oy):
+                continue
+            if abs(tx - ox) > 20 or abs(tw - ow) > 30:
+                continue
+            if abs(ty - oy) > 200:
+                continue
+            matches += 1
+            if matches >= 2:
+                return True
+        return False
+
+    out: list[tuple[int, int, int, int]] = []
+    for r in candidates:
+        if is_stacked(r):
+            continue
+        x, y, w, h = r
         # Synthesize a "field rect" sitting on top of the underline. The
         # rect's HEIGHT controls how tall the writeable area is — viewers
         # using /NeedAppearances draw the value inside this rect with the
