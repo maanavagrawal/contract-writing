@@ -549,13 +549,23 @@ async def propose_mapping(
         for i in range(0, len(field_descriptions), CHUNK_SIZE)
     ]
 
+    # Concurrency cap: gpt-5 Tier 1 = 500K TPM and 4 parallel chunks is safe,
+    # but a buggy 50-chunk upload or two overlapping uploads would otherwise
+    # fire arbitrary concurrent OpenAI calls. Semaphore(4) bounds it.
+    sem = asyncio.Semaphore(4)
+
+    async def _bounded(chunk: list[dict]) -> ProposedMapping:
+        async with sem:
+            return await _propose_mapping_chunk(client, chunk, crops)
+
     results = await asyncio.gather(
-        *(_propose_mapping_chunk(client, chunk, crops) for chunk in chunks),
+        *(_bounded(chunk) for chunk in chunks),
         return_exceptions=True,
     )
 
     all_fields: list[ProposedField] = []
     failures: list[Exception] = []
+    successful_chunks = 0
     for chunk_idx, result in enumerate(results):
         if isinstance(result, Exception):
             failures.append(result)
@@ -577,12 +587,14 @@ async def propose_mapping(
                     )
                 )
             continue
+        successful_chunks += 1
         all_fields.extend(result.fields)
 
-    if failures and not all_fields:
-        # Every chunk failed and we have no fallback placeholders either —
-        # this is a genuine outage, propagate so the upload handler can
-        # surface a 502.
+    if successful_chunks == 0:
+        # Every chunk failed. Even though we have placeholder fields, an
+        # all-unmapped template is worse than an error — the user gets a
+        # form with zero suggestions and no signal anything went wrong.
+        # Better to 502 and let them retry the whole upload.
         raise AIMappingError(
             f"all {len(failures)} mapping chunks failed; first error: {failures[0]}"
         )

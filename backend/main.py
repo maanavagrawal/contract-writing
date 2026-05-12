@@ -69,6 +69,14 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="memoir", lifespan=_lifespan)
 
+# Strong references for fire-and-forget background tasks. Python's
+# asyncio.create_task() returns a task that's only weakly referenced by the
+# event loop — if no caller holds a strong ref, GC can kill the task before
+# it completes (documented behavior of CPython 3.11+). We track every
+# fire-and-forget task here and discard after it finishes. Without this,
+# the Interfaze shadow log writes silently disappear under load.
+_background_tasks: set = set()
+
 
 # ---------------------- AUTH ROUTES ----------------------
 
@@ -984,11 +992,13 @@ async def api_upload_template(
     except templates_mod.TemplateUploadError as e:
         raise HTTPException(400, str(e))
 
-    # Detect whether validate_pdf went through the field_synth path. If yes,
-    # fire the Interfaze shadow comparison in the background — never blocks
-    # the user, never affects what they see, just logs Interfaze's view of
-    # the same flattened PDF for offline accuracy review.
-    field_synth_ran = (persist_bytes is not pdf_bytes and persist_bytes != pdf_bytes)
+    # Detect whether validate_pdf went through the field_synth path. The
+    # synth-path returns NEW bytes (different object, different content);
+    # AcroForm-path returns the same bytes object. Either check works in
+    # the current implementation, but `!=` is the durable contract: if a
+    # future refactor copies bytes in validate_pdf, identity drifts but
+    # content equality survives.
+    field_synth_ran = persist_bytes != pdf_bytes
 
     field_descs = templates_mod.collect_field_descriptions(reader)
     if not field_descs:
@@ -1052,13 +1062,18 @@ async def api_upload_template(
     if field_synth_ran:
         from . import interfaze_shadow
         if interfaze_shadow.is_enabled():
-            asyncio.create_task(_run_interfaze_shadow(
+            task = asyncio.create_task(_run_interfaze_shadow(
                 template_id=template_id,
                 user_id=user.id,
                 pdf_bytes=pdf_bytes,
                 cv_field_count=len(field_descs),
                 cv_sample=field_descs[:10],
             ))
+            # Hold a strong reference until the task completes — otherwise
+            # Python's GC can collect it mid-flight (CPython 3.11+
+            # documented behavior of asyncio.create_task).
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
     return TemplateUploadResponse(
         id=template_id,

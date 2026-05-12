@@ -152,8 +152,12 @@ def _detect_underlines_px(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
         # render their value sitting on top of the underline, so the widget
         # rect should be a thin band straddling the line. Use line height
         # × 3 to give text room without overlapping the line below.
+        # Clamp y >= 0 so an underline near the top of the image doesn't
+        # spawn a widget with negative pixel-y (which would become an
+        # out-of-page PDF rect post Y-flip).
         field_h = max(h * 3, 14)
-        out.append((x, y - field_h + h, w, field_h))
+        new_y = max(0, y - field_h + h)
+        out.append((x, new_y, w, field_h))
     return out
 
 
@@ -209,37 +213,39 @@ def _dedupe_rects(
 
 # ---- text-overlap filter (kills letter-shape FPs) ----
 
-def _text_boxes_in_pdf_space(
+def _text_boxes_all_pages(
     pdf_bytes: bytes,
-    page_idx: int,
-) -> list[tuple[float, float, float, float]]:
-    """Bounding boxes of every text line on a page, in PDF user-space.
+) -> dict[int, list[tuple[float, float, float, float]]]:
+    """Extract every text-line bounding box on every page in ONE pdfminer
+    parse. Returns {page_idx: [bbox, ...]}.
 
-    pdfminer.six returns LTTextBox / LTTextLine objects with .bbox in PDF
-    points (Y bottom-up, origin lower-left). We collect every leaf text box.
-    Returns [] if the page has no extractable text — that's the genuine-scan
-    case where the overlap filter can't help anyway."""
-    out: list[tuple[float, float, float, float]] = []
+    pdfminer is the most expensive part of the filter — without this batch,
+    a 14-page contract reparsed 14x = minutes of CPU on Railway. One full
+    extract_pages() pass is ~3-5s total.
+
+    Returns an empty dict if pdfminer fails; the filter then no-ops and
+    every CV candidate survives — graceful degradation over hard failure."""
+    out: dict[int, list[tuple[float, float, float, float]]] = {}
     try:
-        # pdfminer reads from a file-like object; BytesIO is fine.
-        for page_layout in extract_pages(io.BytesIO(pdf_bytes), page_numbers=[page_idx]):
+        for page_idx, page_layout in enumerate(extract_pages(io.BytesIO(pdf_bytes))):
+            boxes: list[tuple[float, float, float, float]] = []
             for element in page_layout:
-                # LTTextBox aggregates lines; we want both granularities so
-                # short labels (Date, By) and multi-word labels are both
-                # available for the overlap test.
+                # LTTextBox aggregates lines; we keep both granularities so
+                # short labels (Date, By) and multi-word labels both
+                # participate in the overlap test.
                 if isinstance(element, (LTTextBox, LTTextLine)):
-                    out.append(element.bbox)
+                    boxes.append(element.bbox)
                     if isinstance(element, LTTextBox):
                         for line in element:
                             if isinstance(line, LTTextLine):
-                                out.append(line.bbox)
-            break  # only one page requested
+                                boxes.append(line.bbox)
+            out[page_idx] = boxes
     except Exception:
         # pdfminer is finicky on unusual PDFs — better to skip the overlap
         # filter than to fail the upload. The AI mapping step downstream
         # gives every field a confidence score and the user reviews
         # low-confidence ones anyway.
-        return []
+        return {}
     return out
 
 
@@ -275,15 +281,26 @@ def _rect_overlaps_text(
 def detect_blanks(pdf_bytes: bytes) -> list[SynthField]:
     """Find every blank text field and checkbox in a flattened PDF.
 
-    Returns one SynthField per detected blank. Pages are streamed one at a
-    time (the spike opens a fresh PdfDocument per page) so peak memory stays
-    bounded on 30+ page contracts.
+    Returns one SynthField per detected blank. Memory bound: one page's
+    bitmap + numpy gray buffer at any time (~14 MB at 200 DPI). Bitmaps
+    are explicitly closed so pypdfium2's C-side memory is released
+    immediately rather than waiting on Python GC.
+
+    pdfminer text extraction runs ONCE across all pages (not per-page) —
+    that pass is ~3-5s total vs. 14× per-page = minutes on a 14-page CAR
+    contract.
     """
+    # One full-document pdfminer pass up front. Cheap when filter is no-op
+    # (genuine scan → empty dict → every candidate survives, AI mapping
+    # gives confidence=0).
+    text_boxes_by_page = _text_boxes_all_pages(pdf_bytes)
+
     pdf = pypdfium2.PdfDocument(pdf_bytes)
     try:
         out: list[SynthField] = []
         for page_idx in range(len(pdf)):
             page = pdf[page_idx]
+            bitmap = None
             try:
                 page_height_pt = float(page.get_height())
                 bitmap = page.render(scale=SCALE, rotation=0)
@@ -291,6 +308,14 @@ def detect_blanks(pdf_bytes: bytes) -> list[SynthField]:
                 bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
                 gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
             finally:
+                # Order matters: close bitmap before page. pypdfium2 holds
+                # C-side memory in the bitmap that GC may not reclaim
+                # promptly enough on a 30-page contract → OOM on Railway.
+                if bitmap is not None:
+                    try:
+                        bitmap.close()
+                    except Exception:
+                        pass
                 page.close()
 
             underlines = _dedupe_rects(_detect_underlines_px(gray))
@@ -300,7 +325,7 @@ def detect_blanks(pdf_bytes: bytes) -> list[SynthField]:
             # any text on the page. Empty page (a divider) gets no fields,
             # which is correct.
             if underlines or checkboxes:
-                text_boxes = _text_boxes_in_pdf_space(pdf_bytes, page_idx)
+                text_boxes = text_boxes_by_page.get(page_idx, [])
 
                 # Underlines need a gentler overlap threshold — they sit
                 # under (not on top of) text labels, so partial overlap is
@@ -377,13 +402,26 @@ def _make_widget_dict(
         d[NameObject("/Ff")] = NumberObject(0)
         d[NameObject("/V")] = NameObject("/Off")
         d[NameObject("/AS")] = NameObject("/Off")
-        # No /AP entry — pdf_fill._set_appearances_flag forces viewer
-        # appearance regeneration via /NeedAppearances=true. Apple Preview
-        # honors this since the SigFlags bugfix landed.
+        # /AP appearance streams are NOT generated here. Two pragmatic reasons:
+        # (1) Generating proper /AP/N + /AP/D dicts means building Form XObject
+        # streams with content commands (BT/ET text or path operators) — ~80
+        # LOC, lots of edge cases, and pypdf doesn't have a one-call helper.
+        # (2) Setting /NeedAppearances=true at the AcroForm level (which
+        # synthesize_acroform does) tells viewers to render widgets from
+        # /V — including /Btn checkboxes. Acrobat, Chrome, Firefox honor
+        # this. Apple Preview historically did NOT for /Btn until ~Sonoma,
+        # so users on macOS 13 or earlier may see filled checkboxes render
+        # blank. Acceptable trade for the user base (mostly Chrome/Safari
+        # current). Revisit if a design partner reports missing checkmarks.
     else:
         d[NameObject("/FT")] = NameObject("/Tx")
         d[NameObject("/Ff")] = NumberObject(0)
         d[NameObject("/V")] = TextStringObject("")
+        # /DA (default appearance) is required by spec on /Tx widgets. Many
+        # viewers tolerate its absence; Acrobat is strict and will refuse to
+        # render the field value without it. Helvetica 10pt black is the
+        # spec-default safe baseline — matches what Multi-Board ships.
+        d[NameObject("/DA")] = TextStringObject("/Helv 10 Tf 0 g")
     return d
 
 
