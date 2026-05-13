@@ -330,6 +330,34 @@ Rules:
       to today — the agent fills the form today and signs as part of
       that workflow. Only manager/director/approver/buyer/seller dates
       are null (they sign separately, at unknown future times).
+    - HOWEVER: on real-estate signature pages where the agent is
+      generating a contract that the buyer/seller will sign during a
+      single in-person meeting, "Buyer Date" / "Seller Date" / "Buyer
+      Signature Date" next to a Print-Name + Signature row DOES map
+      to today. The convention in this product is that the agent fills
+      these as a courtesy at generation time and the buyer/seller
+      sign+date in person on the same day. Default to today for ANY
+      date field next to a Buyer/Seller/Tenant/Landlord signature
+      row UNLESS the form explicitly distinguishes signature date
+      from agent-fill date.
+
+    SPECIFIC HIGH-VALUE PATTERNS that ALWAYS map to today (do NOT
+    invent an extra_field for these, do NOT return null):
+    - neighbor_text contains "Buyer  Date" (with multiple spaces from
+      column whitespace) on an advisory/acknowledgment page
+    - neighbor_text contains "Buyer Seller Landlord Tenant Date"
+      (the standard CAR-form party-acknowledgment row)
+    - neighbor_text contains "Seller/Buyer  Date" or "Buyer/Seller
+      /Landlord/Tenant  Date" (the slash-separated party-role rows
+      on signature pages of advisory forms: BCA, BIA, CCPA, etc.)
+    - any "Date" field on the right side of a signature row where
+      the signature line is empty (the buyer hasn't signed yet, but
+      the agent IS filling in the form today)
+
+    The AI's instinct is to treat any signature date as null because
+    "the buyer fills it later." In this product's workflow that's
+    WRONG: the agent fills today's date when generating, and the
+    buyer countersigns next to it. Default to today.
     - "Seller Rejection date and time" / "presented to Seller on ___"
       / any "this offer was [verb] on ___" line — these are events
       that happen DURING signing, not data from the agent's notes.
@@ -347,6 +375,39 @@ Rules:
 
   When in doubt: if the field appears next to a "Signature" line or
   in a "FOR INFORMATION ONLY" header row, prefer null over today.
+
+  ============ ZIPFORM / LONEWOLF FOOTER STRIPS ============
+
+  Many California Association of REALTORS (CAR) forms and Compass /
+  Lone Wolf-produced PDFs have a tiny footer strip at the bottom of
+  every page reading:
+      "Phone:    Fax:    Produced with Lone Wolf Transactions
+       (zipForm Edition) 717 N Harwood St, Suite 2200, Dallas, TX 75201
+       www.lwolf.com"
+  This is DECORATIVE BRAND METADATA, not a field for the agent's phone
+  or fax. Any field whose neighbor_text contains "Phone:" + "Fax:" +
+  "www.lwolf.com" together — OR a field at page_y_fraction > 0.93 (the
+  bottom margin where these footers live) whose neighbor text mentions
+  "Lone Wolf" / "zipForm" / "lwolf.com" / "Phone:   Fax:" — MUST be
+  null. Do NOT map to agent.phone / agent.email / agent.brokerage.
+
+  ============ "DO NOT COMPLETE. SAMPLE ONLY" FIELDS ============
+
+  CAR Form AD page 2 (and other CAR forms' confirmation-of-agency
+  pages) contain sample-text fields explicitly labeled
+  "DO NOT COMPLETE. SAMPLE ONLY". These are illustrative — the actual
+  representation confirmation is done elsewhere (typically on the
+  separate AC form or in the purchase contract). Field labels like:
+      "Seller's Brokerage Firm DO NOT COMPLETE. SAMPLE ONLY License Number"
+      "Buyer's Agent DO NOT COMPLETE. SAMPLE ONLY License Number"
+  MUST be null. Even when the field name itself looks like a
+  "Brokerage Firm" or "License Number" slot, the "DO NOT COMPLETE.
+  SAMPLE ONLY" qualifier on the same line means it's static text the
+  agent NEVER fills in this template (it's filled on the actual
+  representation form, not here).
+
+  Detection: neighbor_text contains "DO NOT COMPLETE" or "SAMPLE ONLY"
+  → null, regardless of other label hints.
 
   ============ WHEN TO USE template_extras ============
 
@@ -737,12 +798,21 @@ async def _propose_mapping_chunk(
                 "image_url": f"data:image/png;base64,{crops[name]}",
             })
 
-    # Mini handles the easy 80% of classification cases at "minimal" reasoning
-    # in roughly half the wall time of "low"; gpt-5 gets the harder cases
-    # (pass 2) at "low" because those are the genuinely-ambiguous fields
-    # where a tiny bit of reasoning is worth ~5-8s.
+    # Reasoning effort tuning:
+    # - mini at "minimal" produced ~13-pt accuracy spread on the CAR BRBC
+    #   across 3 trials. Bumping to "low" reduced spread but mini's value
+    #   was always marginal on dense synth-heavy forms — those now skip
+    #   mini entirely (see _is_synthesized_form in propose_mapping_two_pass).
+    # - gpt-5 at "low" on the CAR synth bypass showed 21-pt spread across
+    #   5 trials (CAR eval round 7, 2026-05-13). The variance lives in
+    #   the AI itself, not in prompt quality — same prompt + input gives
+    #   different mappings on consecutive runs. Bumping gpt-5 to "high"
+    #   spends ~30-50% more tokens (slower) but produces dramatically
+    #   more stable answers across trials. On a 165-field synth form
+    #   the latency cost is bounded by chunking (3 chunks at ~60s each
+    #   parallel ~= 60s wall time at low, ~80-90s at high).
     effective_model = model or MODEL
-    reasoning_effort = "minimal" if effective_model == MODEL_FAST else "low"
+    reasoning_effort = "high" if effective_model == MODEL else "low"
     try:
         response = await asyncio.to_thread(
             client.responses.parse,
@@ -917,6 +987,26 @@ def _needs_second_pass(
     return True
 
 
+def _is_synthesized_form(field_descriptions: list[dict]) -> bool:
+    """True if the majority of fields come from field_synth (flattened-PDF
+    visual detection). These have f_NNN_NNN names with no semantic signal
+    in the name itself — every mapping decision depends on neighbor_text,
+    page_x/y, and the crop image. Mini at any reasoning level struggles
+    here because the input is harder; gpt-5 is the right tool from the
+    start.
+
+    Detection: >50% of field names match the f_NNN_NNN pattern.
+    """
+    if not field_descriptions:
+        return False
+    synth_count = sum(
+        1 for fd in field_descriptions
+        if (fd.get("pdf_field") or "").startswith("f_")
+        and "_" in (fd.get("pdf_field") or "")
+    )
+    return synth_count > len(field_descriptions) * 0.5
+
+
 async def propose_mapping_two_pass(
     field_descriptions: list[dict],
     crops: dict[str, str] | None = None,
@@ -924,6 +1014,13 @@ async def propose_mapping_two_pass(
     """Two-pass mapping: gpt-5-mini over all fields, then gpt-5 over the
     fields mini got wrong or wasn't sure about. Returns a ProposedMapping
     in the SAME positional order as field_descriptions.
+
+    EXCEPTION: synthesized forms (flattened PDFs where field_synth
+    invented f_NNN_NNN names) skip mini entirely and go straight to gpt-5
+    with crops. Mini's variance on no-semantic-name fields produces 13-
+    point swings between trials — gpt-5 single-pass is ~25% more accurate
+    and ~10x more stable in that regime. CAR BRBC eval round 4 (2026-05-13)
+    confirmed mini-pass-1 floor at 68% MIN, gpt-5-single-pass at 80%+.
 
     Why two-pass: mini is roughly 4-5x faster per chunk than gpt-5 with
     comparable accuracy on the "obvious" fields (broker block, party
@@ -946,6 +1043,29 @@ async def propose_mapping_two_pass(
         return ProposedMapping(fields=[])
 
     import time
+
+    # SYNTHESIZED-FORM BYPASS: when every field name is f_NNN_NNN
+    # (field_synth output on a flattened PDF), mini provides no value —
+    # it variance-walks through different extra_field names per trial
+    # because the names themselves carry no signal. Skip mini and run
+    # gpt-5 single-pass WITH CROPS over everything. Slower but ~20-30
+    # accuracy points more stable.
+    if _is_synthesized_form(field_descriptions):
+        t0 = time.perf_counter()
+        print(
+            f"propose_mapping_two_pass: synthesized form detected "
+            f"({len(field_descriptions)} fields) — bypassing mini, "
+            f"using gpt-5 single-pass with crops",
+            flush=True,
+        )
+        result = await propose_mapping(field_descriptions, crops=crops, model=MODEL)
+        print(
+            f"propose_mapping_two_pass: gpt-5 single-pass finished in "
+            f"{time.perf_counter() - t0:.1f}s",
+            flush=True,
+        )
+        return result
+
     t0 = time.perf_counter()
     # Pass 1: mini on all fields, but NO CROPS. The crop payloads are
     # significant token weight (50+ images on the CAR BRBC) and mini's
