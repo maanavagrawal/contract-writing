@@ -1017,13 +1017,13 @@ function clearPagesContainer() {
 }
 
 function renderUncertainFields(doc) {
-  // Collapsed banner above the rendered PDF listing fields the AI wasn't
-  // sure about. Default collapsed so the PDF stays visible without scrolling
-  // past 96 rows of warnings (real Multi-Board case). Native <details> so
-  // the toggle is keyboard-accessible and works without extra JS. The host
-  // <div id="uncertain-fields"> is itself the <details> element — no extra
-  // wrapper. State persists across regenerates: if the user expanded the
-  // panel and then regenerates the same template, the new banner stays open.
+  // Collapsed review surface above the rendered PDF listing fields the AI
+  // wasn't sure about. Each row offers three actions — Accept (use the AI's
+  // canonical guess), Override (pick a canonical path from the form's known
+  // set), Skip (leave blank). Pending corrections accumulate in an in-page
+  // map; a "Save corrections" button at the bottom posts them in one PATCH
+  // /api/templates/<id>/mapping. State persists across regenerates of the
+  // same template (the user reopens to see what's left).
   if (!els.uncertainFields) return;
   const uncertain = (doc && doc.uncertain_fields) || [];
   if (!uncertain.length) {
@@ -1032,39 +1032,178 @@ function renderUncertainFields(doc) {
     els.uncertainFields.removeAttribute("open");
     return;
   }
+  const templateId = doc && doc.document;
   const wasOpen = els.uncertainFields.hasAttribute("open");
   els.uncertainFields.hidden = false;
   const count = uncertain.length;
   const heading = `We weren't sure about ${count} field${count === 1 ? "" : "s"}`;
-  // Pre-shape each row into a label + readable description. The "proposed"
-  // string is internal (canonical_path or extra_field_name) — show it as
-  // a hint, not the headline.
-  const rows = uncertain.map((u) => {
+
+  // Harvest the set of canonical paths actually shown on the form. Keeping
+  // these in lockstep with [data-path] guarantees the picker never offers
+  // something the schema can't fill, and shrinks the choice list to what
+  // the agent already understands.
+  const canonicalOptions = Array.from(document.querySelectorAll("[data-path]"))
+    .map((el) => el.dataset.path)
+    .filter(Boolean);
+  // Always include "today" and the agent.* family — these don't appear on
+  // the form (they come from the agent profile + generation date) but are
+  // common review targets on signature blocks.
+  const supplemental = [
+    "today", "agent.name", "agent.brokerage", "agent.brokerage_address",
+    "agent.brokerage_license", "agent.brokerage_mls", "agent.license",
+    "agent.phone", "agent.email", "agent.mls",
+  ];
+  const allCanonical = Array.from(new Set([...canonicalOptions, ...supplemental])).sort();
+  const optionsHtml = allCanonical
+    .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+    .join("");
+
+  const rows = uncertain.map((u, i) => {
     const label = u.pdf_field || "unnamed field";
     const hint = u.kind === "canonical"
-      ? `Looked like: ${u.proposed.replace(/_/g, " ")}`
-      : `Looked like custom field: ${u.proposed.replace(/_/g, " ")}`;
+      ? `AI thought: ${u.proposed.replace(/_/g, " ")} (confidence ${u.confidence}/10)`
+      : `AI thought: custom field "${u.proposed.replace(/_/g, " ")}" (confidence ${u.confidence}/10)`;
+    const acceptDisabled = u.kind !== "canonical" ? "disabled" : "";
+    const acceptTitle = u.kind === "canonical"
+      ? `Use ${u.proposed} as the canonical path`
+      : "Accept only available when the AI proposed a canonical path";
     return `
-      <li class="uncertain-row">
-        <span class="uncertain-label">${escapeHtml(label)}</span>
-        <span class="uncertain-hint">${escapeHtml(hint)}</span>
+      <li class="uncertain-row" data-row-idx="${i}" data-pdf-field="${escapeHtml(u.pdf_field)}" data-proposed="${escapeHtml(u.proposed)}" data-kind="${escapeHtml(u.kind)}">
+        <div class="uncertain-row-head">
+          <span class="uncertain-label">${escapeHtml(label)}</span>
+          <span class="uncertain-hint">${escapeHtml(hint)}</span>
+        </div>
+        <div class="uncertain-row-actions">
+          <button type="button" class="uncertain-action" data-action="accept" ${acceptDisabled} title="${escapeHtml(acceptTitle)}">Accept</button>
+          <select class="uncertain-override" aria-label="Override with canonical path">
+            <option value="">— Override with canonical path —</option>
+            ${optionsHtml}
+          </select>
+          <button type="button" class="uncertain-action" data-action="skip" title="Leave blank — user fills by hand">Skip</button>
+        </div>
+        <div class="uncertain-row-status" data-status></div>
       </li>
     `;
   }).join("");
+
   els.uncertainFields.innerHTML = `
     <summary class="uncertain-header">
       <svg class="uncertain-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
       </svg>
       <strong>${escapeHtml(heading)}</strong>
-      <span class="uncertain-sub">left blank in the PDF, fill in by hand</span>
+      <span class="uncertain-sub">click Accept, Override, or Skip to teach the template — corrections persist</span>
       <svg class="uncertain-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
     </summary>
     <ul class="uncertain-list">${rows}</ul>
+    <div class="uncertain-footer">
+      <button type="button" class="uncertain-save" data-action="save-corrections" disabled>Save corrections</button>
+      <span class="uncertain-save-status" data-save-status></span>
+    </div>
   `;
   if (wasOpen) els.uncertainFields.setAttribute("open", "");
+
+  // In-memory pending-corrections map for this template. Cleared on save
+  // success. Survives within-tab edits because the panel re-renders only on
+  // regenerate, not on each click.
+  const pending = new Map();
+
+  const saveBtn = els.uncertainFields.querySelector('[data-action="save-corrections"]');
+  const saveStatus = els.uncertainFields.querySelector('[data-save-status]');
+
+  function refreshSaveButton() {
+    if (!saveBtn) return;
+    saveBtn.disabled = pending.size === 0;
+    saveBtn.textContent = pending.size === 0
+      ? "Save corrections"
+      : `Save ${pending.size} correction${pending.size === 1 ? "" : "s"}`;
+  }
+
+  function markRow(row, text, tone) {
+    const status = row.querySelector("[data-status]");
+    if (!status) return;
+    status.textContent = text;
+    status.className = `uncertain-row-status ${tone || ""}`;
+  }
+
+  els.uncertainFields.querySelectorAll(".uncertain-row").forEach((row) => {
+    const pdfField = row.dataset.pdfField;
+    const proposed = row.dataset.proposed;
+    const kind = row.dataset.kind;
+    const select = row.querySelector(".uncertain-override");
+    row.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        if (action === "accept" && kind === "canonical") {
+          pending.set(pdfField, { pdf_field: pdfField, canonical_path: proposed });
+          markRow(row, `Will route to ${proposed}`, "queued");
+        } else if (action === "skip") {
+          pending.set(pdfField, { pdf_field: pdfField, skip: true });
+          markRow(row, "Will leave blank", "queued");
+        }
+        refreshSaveButton();
+      });
+    });
+    if (select) {
+      select.addEventListener("change", () => {
+        const path = select.value;
+        if (!path) {
+          pending.delete(pdfField);
+          markRow(row, "", "");
+        } else {
+          pending.set(pdfField, { pdf_field: pdfField, canonical_path: path });
+          markRow(row, `Will route to ${path}`, "queued");
+        }
+        refreshSaveButton();
+      });
+    }
+  });
+
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      if (pending.size === 0 || !templateId) return;
+      saveBtn.disabled = true;
+      const corrections = Array.from(pending.values());
+      saveStatus.textContent = "Saving…";
+      saveStatus.className = "uncertain-save-status";
+      try {
+        const res = await authedFetch(`/api/templates/${encodeURIComponent(templateId)}/mapping`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ corrections }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          throw new Error(`save failed (${res.status}): ${detail}`);
+        }
+        const body = await res.json();
+        // Dim the rows we just corrected; keep them in place so the user
+        // sees what they did. Banner regenerates fresh on next /generate.
+        corrections.forEach((c) => {
+          const row = els.uncertainFields.querySelector(`[data-pdf-field="${CSS.escape(c.pdf_field)}"]`);
+          if (row) {
+            row.classList.add("uncertain-row-saved");
+            const status = row.querySelector("[data-status]");
+            if (status) status.textContent = "Saved — next generate will use this";
+          }
+        });
+        pending.clear();
+        refreshSaveButton();
+        const remaining = body.low_confidence_remaining ?? 0;
+        saveStatus.textContent = remaining === 0
+          ? "All done — re-generate to see the filled PDF"
+          : `Saved (${remaining} uncertain field${remaining === 1 ? "" : "s"} remaining)`;
+        saveStatus.classList.add("ok");
+      } catch (e) {
+        console.warn("save corrections failed", e);
+        saveStatus.textContent = String(e.message || e);
+        saveStatus.classList.add("err");
+        saveBtn.disabled = false;
+      }
+    });
+  }
 }
 
 function escapeHtml(s) {

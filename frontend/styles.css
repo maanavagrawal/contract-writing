@@ -1373,11 +1373,36 @@ details.uncertain-fields[open] .uncertain-chevron {
 }
 .uncertain-row {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   font-size: 12px;
-  padding: 4px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: var(--bg);
+  border: 1px solid transparent;
+}
+.uncertain-row-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.uncertain-row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.uncertain-row-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 14px;
+}
+.uncertain-row-status.queued { color: var(--accent, #d97706); }
+.uncertain-row-status.ok { color: var(--success, #15803d); }
+.uncertain-row-status.err { color: var(--danger, #b91c1c); }
+.uncertain-row-saved {
+  opacity: 0.7;
+  border-color: var(--success, #15803d) !important;
 }
 .uncertain-label {
   font-family: var(--font-mono);
@@ -1390,6 +1415,64 @@ details.uncertain-fields[open] .uncertain-chevron {
   color: var(--text-muted);
   flex: 1;
 }
+.uncertain-action {
+  font-size: 11px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+}
+.uncertain-action:hover:not(:disabled) {
+  background: var(--bg-hover, #f4f4f5);
+  border-color: var(--text-muted);
+}
+.uncertain-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.uncertain-override {
+  font-size: 11px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 180px;
+}
+.uncertain-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.uncertain-save {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border: 1px solid var(--accent, #d97706);
+  border-radius: var(--radius-sm);
+  background: var(--accent, #d97706);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+}
+.uncertain-save:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.uncertain-save-status {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.uncertain-save-status.ok { color: var(--success, #15803d); }
+.uncertain-save-status.err { color: var(--danger, #b91c1c); }
 
 /* ============================================================
  * Workstreams A + B + C: chip strip, voice button.
