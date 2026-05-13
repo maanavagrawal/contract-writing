@@ -148,6 +148,10 @@ def _render_field_crop(
     doc: pdfium.PdfDocument,
     page_idx: int,
     rect: tuple[float, float, float, float],
+    pad_top: float = CROP_PADDING_TOP,
+    pad_left: float = CROP_PADDING_LEFT,
+    pad_right: float = CROP_PADDING_RIGHT,
+    pad_bottom: float = CROP_PADDING_BOTTOM,
 ) -> bytes:
     """Render a single field's neighborhood as a PNG.
 
@@ -158,12 +162,19 @@ def _render_field_crop(
 
     PDF space has y growing upward, so the field's "above" zone (where
     labels live) is at higher y. We cut everything outside the band:
-      keep_left   = field.llx - CROP_PADDING_LEFT
-      keep_bottom = field.lly - CROP_PADDING_BOTTOM
-      keep_right  = field.urx + CROP_PADDING_RIGHT
-      keep_top    = field.ury + CROP_PADDING_TOP
+      keep_left   = field.llx - pad_left
+      keep_bottom = field.lly - pad_bottom
+      keep_right  = field.urx + pad_right
+      keep_top    = field.ury + pad_top
 
     The cuts (what pypdfium2 wants) are page_size - keep_region.
+
+    Per-field padding overrides let callers tighten the window when an
+    adjacent sibling field would otherwise bleed into the crop and
+    visually confuse the AI (e.g. the BRBC broker block has Firm-row +
+    Agent-row Lic # fields stacked ~30pt apart; without per-field
+    tightening, each Lic #'s crop includes the OTHER row's Lic # and the
+    AI can't tell them apart).
     """
     page = doc[page_idx]
     try:
@@ -171,10 +182,10 @@ def _render_field_crop(
         llx, lly, urx, ury = rect
 
         # The "keep" window in PDF coords.
-        keep_left = max(0.0, llx - CROP_PADDING_LEFT)
-        keep_bottom = max(0.0, lly - CROP_PADDING_BOTTOM)
-        keep_right = min(page_w, urx + CROP_PADDING_RIGHT)
-        keep_top = min(page_h, ury + CROP_PADDING_TOP)
+        keep_left = max(0.0, llx - pad_left)
+        keep_bottom = max(0.0, lly - pad_bottom)
+        keep_right = min(page_w, urx + pad_right)
+        keep_top = min(page_h, ury + pad_top)
 
         # If the rect is malformed (zero or negative area after clamp),
         # render the whole page; better than a crash on weird widgets.
@@ -239,11 +250,70 @@ def collect_field_crops(
     # us; safe both ways but explicit > implicit).
     from .templates import _pick_primary_widget
     rect_by_name: dict[str, tuple[int, tuple[float, float, float, float]]] = {}
+    # Same as rect_by_name but grouped by page so we can compute sibling
+    # distances cheaply. Each entry is the primary widget's rect.
+    rects_by_page: dict[int, list[tuple[float, float, float, float]]] = {}
     for fi in walk_fields(reader):
         primary = _pick_primary_widget(fi.widgets)
         if not primary or not primary.rect or primary.page <= 0:
             continue
         rect_by_name[fi.dotted_name] = (primary.page, primary.rect)
+        rects_by_page.setdefault(primary.page, []).append(primary.rect)
+
+    def _sibling_pad(
+        rect: tuple[float, float, float, float],
+        page_num: int,
+    ) -> tuple[float, float, float, float]:
+        """Compute (pad_top, pad_left, pad_right, pad_bottom) for a crop
+        that won't bleed in adjacent sibling fields.
+
+        Default paddings are tuned for sparse layouts (form blanks with lots
+        of whitespace around them). On dense layouts — the BRBC broker block
+        has Firm row + Agent row Lic # fields stacked ~25-40pt apart — the
+        default 60pt vertical padding pulls the sibling row into the crop,
+        and the AI can't tell which Lic # the field belongs to. For each
+        edge, find the nearest sibling whose rect would land inside the
+        default padding window AND overlaps the target on the perpendicular
+        axis (a sibling to the side doesn't bleed in vertically). Shrink the
+        padding to half the gap so the sibling rect's edge stays out.
+
+        Half-gap keeps a visible whitespace strip between the target and
+        the sibling, which the AI reads as a row separator. Zero gap would
+        make the sibling's edge sit on the crop boundary and look fused.
+        """
+        llx, lly, urx, ury = rect
+        pad_top = float(CROP_PADDING_TOP)
+        pad_left = float(CROP_PADDING_LEFT)
+        pad_right = float(CROP_PADDING_RIGHT)
+        pad_bottom = float(CROP_PADDING_BOTTOM)
+        for ox0, oy0, ox1, oy1 in rects_by_page.get(page_num, []):
+            if (ox0, oy0, ox1, oy1) == rect:
+                continue
+            # Vertical-overlap check (sibling shares y range with target):
+            # those are LEFT/RIGHT neighbors. Sibling above/below has NO
+            # vertical overlap and is the dangerous case for pad_top/pad_bottom.
+            v_overlap = min(ury, oy1) - max(lly, oy0) > 0
+            # Horizontal-overlap check, same logic for pad_left/pad_right.
+            h_overlap = min(urx, ox1) - max(llx, ox0) > 0
+            if h_overlap and not v_overlap:
+                # Sibling above (oy0 > ury) → constrain pad_top to half the gap.
+                if oy0 > ury:
+                    gap = oy0 - ury
+                    pad_top = min(pad_top, max(4.0, gap * 0.5))
+                # Sibling below (oy1 < lly) → constrain pad_bottom.
+                elif oy1 < lly:
+                    gap = lly - oy1
+                    pad_bottom = min(pad_bottom, max(4.0, gap * 0.5))
+            elif v_overlap and not h_overlap:
+                # Sibling to the left → constrain pad_left.
+                if ox1 < llx:
+                    gap = llx - ox1
+                    pad_left = min(pad_left, max(8.0, gap * 0.5))
+                # Sibling to the right → constrain pad_right.
+                elif ox0 > urx:
+                    gap = ox0 - urx
+                    pad_right = min(pad_right, max(8.0, gap * 0.5))
+        return (pad_top, pad_left, pad_right, pad_bottom)
 
     # Stream the original PDF bytes through pypdfium2. The reader holds them
     # in its stream; rewind and read.
@@ -269,8 +339,13 @@ def collect_field_crops(
             if not name or name not in rect_by_name:
                 continue
             page_num, rect = rect_by_name[name]
+            pad_top, pad_left, pad_right, pad_bottom = _sibling_pad(rect, page_num)
             try:
-                png_bytes = _render_field_crop(doc, page_num - 1, rect)
+                png_bytes = _render_field_crop(
+                    doc, page_num - 1, rect,
+                    pad_top=pad_top, pad_left=pad_left,
+                    pad_right=pad_right, pad_bottom=pad_bottom,
+                )
                 crops[name] = base64.b64encode(png_bytes).decode("ascii")
             except Exception as e:
                 print(f"collect_field_crops: crop failed for {name!r}: {e}")

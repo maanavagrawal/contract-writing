@@ -542,7 +542,20 @@ def synthesize_acroform(pdf_bytes: bytes, fields: list[SynthField]) -> bytes:
 
     # Build /AcroForm. /NeedAppearances=true tells viewers to render widget
     # values from their /V (since we don't ship /AP appearance streams).
+    #
+    # _root_object is private API. pypdf's PdfWriter(clone_from=reader) always
+    # sets it to the document catalog (a dict with /Type /Catalog), but we
+    # guard against an adversarial PDF that produces a different shape:
+    # without the guard, a non-catalog object becomes our AcroForm-host and
+    # the produced PDF would be silently malformed. Defense-in-depth — the
+    # 25MB/50-page caps in main.py and validate_pdf's PdfReader pre-flight
+    # are the primary defenses against malformed input.
     catalog = writer._root_object
+    if not isinstance(catalog, DictionaryObject) or catalog.get("/Type") != NameObject("/Catalog"):
+        raise ValueError(
+            "PdfWriter._root_object is not a /Type /Catalog dict — refusing to "
+            "synthesize AcroForm on an unexpected document shape"
+        )
     acroform = DictionaryObject({
         NameObject("/Fields"): ArrayObject(all_field_refs),
         NameObject("/NeedAppearances"): BooleanObject(True),
