@@ -172,6 +172,20 @@ For each PDF field you'll see:
     radio group shows ["/Off", "/Choice1", "/Choice2", ...]. THESE ARE PER-PDF
     AND YOU MUST USE THE EXACT STRINGS GIVEN — do NOT invent "/On" if the
     list says ["/Off", "/Yes"]. See the btn_choices field below.
+  - page_x_fraction (0.0-1.0): horizontal position of the field center on the
+    page. 0.0 = left edge, 0.5 = center column, 1.0 = right edge. CRITICAL
+    DISAMBIGUATOR on two-column layouts: a field at 0.25 is left column,
+    same-row sibling at 0.75 is right column. Use this when neighbor_text
+    is identical between two fields (e.g. on the BRBC compensation row a
+    "%" field at x=0.20 and a "$" field at x=0.65 share the LEFT label
+    "Amount of Compensation" but are different concepts).
+  - page_y_fraction (0.0-1.0): vertical position. 0.0 = top of page, 1.0 =
+    bottom. CRITICAL DISAMBIGUATOR on signature pages with stacked
+    Buyer/Seller blocks: the Buyer's Brokerage row at y=0.30 and the
+    Seller's Brokerage row at y=0.45 have identical neighbor_text but
+    different vertical positions. Use page_y_fraction to assign canonical
+    paths: top stack -> agent.* (buyer's broker), bottom stack -> seller_*
+    (or template_extras if seller_brokerage isn't in the canonical schema).
   - for some fields with empty neighbor_text: an attached cropped image of the
     field's surrounding area on the PDF page. Use the image to read labels
     that text extraction missed (column headers, table rows, hand-tagged
@@ -507,6 +521,25 @@ def collect_field_descriptions(reader: PdfReader) -> list[dict]:
     appearance states.
     """
     out: list[dict] = []
+    # Page-size cache so we read each page's /MediaBox once instead of N times.
+    page_size_cache: dict[int, tuple[float, float]] = {}
+
+    def _page_size(page_num: int) -> tuple[float, float]:
+        if page_num in page_size_cache:
+            return page_size_cache[page_num]
+        if page_num < 1 or page_num > len(reader.pages):
+            page_size_cache[page_num] = (612.0, 792.0)  # US Letter fallback
+            return page_size_cache[page_num]
+        page = reader.pages[page_num - 1]
+        try:
+            mb = page.mediabox
+            w = float(mb.width)
+            h = float(mb.height)
+        except Exception:
+            w, h = 612.0, 792.0
+        page_size_cache[page_num] = (w, h)
+        return (w, h)
+
     for fi in walk_fields(reader):
         primary = _pick_primary_widget(fi.widgets)
         neighbor = ""
@@ -518,6 +551,23 @@ def collect_field_descriptions(reader: PdfReader) -> list[dict]:
             "neighbor_text": neighbor[:300],
             "page": primary.page if primary else 0,
         }
+        # Spatial position hints. On dense multi-page forms with repeating
+        # rows (PRBS p9: "Buyer's Brokerage" + "Seller's Brokerage" stack on
+        # the same page; BRBC table p3: two-column layout), neighbor_text
+        # alone is ambiguous because both rows share LEFT/ABOVE/BELOW labels.
+        # Page-relative position is the cheapest disambiguator: a field in
+        # the top half (page_y_fraction ~ 0.2) is structurally distinct from
+        # the same-looking field in the bottom half (~ 0.7). PDF coords have
+        # y growing UP from page bottom; we invert so 0.0 = top of page and
+        # 1.0 = bottom (matches how a human reads a page). Float, 2 decimals.
+        if primary and primary.rect and primary.page > 0:
+            llx, lly, urx, ury = primary.rect
+            page_w, page_h = _page_size(primary.page)
+            if page_w > 0 and page_h > 0:
+                cx = (llx + urx) / 2.0
+                cy = (lly + ury) / 2.0
+                entry["page_x_fraction"] = round(cx / page_w, 2)
+                entry["page_y_fraction"] = round(1.0 - (cy / page_h), 2)
         if fi.field_type in ("/Btn", "/Ch"):
             states = fi.states
             if states:
@@ -558,10 +608,15 @@ async def _propose_mapping_chunk(
     client: OpenAI,
     chunk: list[dict],
     crops: dict[str, str] | None,
+    model: str | None = None,
 ) -> ProposedMapping:
     """Send one batch of field descriptors (with optional visual crops) to
     GPT and parse the result. Used by propose_mapping for both single-shot
     and chunked calls.
+
+    model: optional override (None = use the module's MODEL = gpt-5). The
+    two-pass pipeline calls this with gpt-5-mini for pass 1 and the default
+    gpt-5 for pass 2 over the low-confidence subset.
 
     reasoning_effort="low" because this is a classification task — given a
     field name + neighbor text + (optional) crop, pick a canonical_path from
@@ -599,16 +654,22 @@ async def _propose_mapping_chunk(
                 "image_url": f"data:image/png;base64,{crops[name]}",
             })
 
+    # Mini handles the easy 80% of classification cases at "minimal" reasoning
+    # in roughly half the wall time of "low"; gpt-5 gets the harder cases
+    # (pass 2) at "low" because those are the genuinely-ambiguous fields
+    # where a tiny bit of reasoning is worth ~5-8s.
+    effective_model = model or MODEL
+    reasoning_effort = "minimal" if effective_model == MODEL_FAST else "low"
     try:
         response = await asyncio.to_thread(
             client.responses.parse,
-            model=MODEL,
+            model=effective_model,
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
             ],
             text_format=ProposedMapping,
-            reasoning={"effort": "low"},
+            reasoning={"effort": reasoning_effort},
         )
     except Exception as e:
         raise AIMappingError(f"OpenAI API call failed: {e}")
@@ -622,12 +683,16 @@ async def _propose_mapping_chunk(
 async def propose_mapping(
     field_descriptions: list[dict],
     crops: dict[str, str] | None = None,
+    model: str | None = None,
 ) -> ProposedMapping:
     """Ask GPT-5 to propose a mapping for every field in field_descriptions.
 
     crops: optional dict mapping pdf_field name -> base64 PNG of the field's
     surrounding area. Used to give the AI visual context for fields where
     text extraction missed the label. See pdf_render.collect_field_crops.
+
+    model: optional override (None = MODEL = gpt-5). Used by
+    propose_mapping_two_pass which calls this twice with different models.
 
     For forms with more than CHUNK_SIZE fields, splits into batches and runs
     them concurrently via asyncio.gather (was sequential — that was a stale
@@ -646,7 +711,7 @@ async def propose_mapping(
     client = _get_client()
 
     if len(field_descriptions) <= CHUNK_SIZE:
-        return await _propose_mapping_chunk(client, field_descriptions, crops)
+        return await _propose_mapping_chunk(client, field_descriptions, crops, model=model)
 
     # Slice into chunks. gather preserves positional order in its return,
     # so concatenating in-order rebuilds the original field sequence.
@@ -662,7 +727,7 @@ async def propose_mapping(
 
     async def _bounded(chunk: list[dict]) -> ProposedMapping:
         async with sem:
-            return await _propose_mapping_chunk(client, chunk, crops)
+            return await _propose_mapping_chunk(client, chunk, crops, model=model)
 
     results = await asyncio.gather(
         *(_bounded(chunk) for chunk in chunks),
@@ -706,6 +771,160 @@ async def propose_mapping(
         )
 
     return ProposedMapping(fields=all_fields)
+
+
+# Cheap-pass model for the two-pass pipeline. gpt-5-mini handles ~80-85% of
+# fields correctly on dense forms (verified on the CAR BRBC, where mini got
+# the broker block right but inverted some same-row Lic # pairs). Pass 2
+# escalates the rest to MODEL (gpt-5). The split halves wall time vs running
+# gpt-5 on every field.
+MODEL_FAST = "gpt-5-mini"
+
+
+def _needs_second_pass(
+    proposed: ProposedField,
+    allowlist: set[str],
+) -> bool:
+    """Return True when pass 1's proposal for this field needs a stronger
+    second look. Triggers (tuned for ~30% escalation rate on CAR BRBC —
+    higher fractions cost more in upload latency than they buy in accuracy):
+      - canonical_path set but not in the allowlist (mini hallucinated)
+      - canonical_path set with confidence below the per-path threshold
+        (mini is hedging on a canonical answer)
+      - nothing proposed at all (mini gave up entirely)
+      - extra_field_name set AND _is_handfill_extra is False AND confidence
+        below threshold (mini was uncertain on a real extra — pass 2 might
+        find a canonical match the prompt missed)
+
+    Notably we DO NOT escalate when:
+      - extra_field_name is set and _coerce_extra_to_canonical resolves it
+        (the deterministic safety net already rewrites it at fill time —
+        spending gpt-5 here is double work)
+      - extra_field_name is set and _is_handfill_extra (sign-time field —
+        never auto-fills regardless of model)
+      - extra_field_name is set at high confidence (mini's call stands —
+        if mini was 8+ confident this is a custom extra, gpt-5 wouldn't
+        meaningfully reclassify it)
+
+    This raises mini-only acceptance for the long tail of handfill /
+    decorative extras (~50% of synthesized CAR fields) and reserves gpt-5
+    spend for the genuinely-uncertain canonical decisions.
+    """
+    if proposed.canonical_path:
+        if proposed.canonical_path not in allowlist:
+            return True
+        return proposed.confidence < _threshold_for_path(proposed.canonical_path)
+    if proposed.extra_field_name:
+        # Safety net handles these cheaply at fill time — don't pay gpt-5.
+        if _coerce_extra_to_canonical(proposed.extra_field_name):
+            return False
+        # Handfill / decorative: no canonical exists, gpt-5 won't help.
+        if _is_handfill_extra(proposed.extra_field_name):
+            return False
+        return proposed.confidence < LOW_CONFIDENCE_THRESHOLD
+    # Nothing proposed at all — gpt-5 might do better.
+    return True
+
+
+async def propose_mapping_two_pass(
+    field_descriptions: list[dict],
+    crops: dict[str, str] | None = None,
+) -> ProposedMapping:
+    """Two-pass mapping: gpt-5-mini over all fields, then gpt-5 over the
+    fields mini got wrong or wasn't sure about. Returns a ProposedMapping
+    in the SAME positional order as field_descriptions.
+
+    Why two-pass: mini is roughly 4-5x faster per chunk than gpt-5 with
+    comparable accuracy on the "obvious" fields (broker block, party
+    blocks, simple labels). On dense legal contracts mini fumbles ~15-20%
+    of fields — either by emitting low confidence or by routing a known
+    canonical concept into template_extras. Re-running JUST those fields
+    through gpt-5 gets the wall-time benefit of mini without the
+    accuracy regression we saw on the 14-page CAR BRBC.
+
+    The merge is positional via a {pdf_field: ProposedField} dict, so
+    fields the second pass touches override mini's proposal but other
+    fields keep mini's. If the second pass fails (5xx, timeout), we
+    keep mini's proposals — degrading to single-pass quality is better
+    than failing the upload.
+
+    Raises AIMappingError only when pass 1 fails entirely. A pass 2
+    failure surfaces as a print + degraded accuracy, not a 502.
+    """
+    if not field_descriptions:
+        return ProposedMapping(fields=[])
+
+    import time
+    t0 = time.perf_counter()
+    # Pass 1: mini on all fields, but NO CROPS. The crop payloads are
+    # significant token weight (50+ images on the CAR BRBC) and mini's
+    # vision quality is weaker than gpt-5 anyway — sending them to mini
+    # tripled pass 1 latency without measurably improving accuracy on the
+    # uploads we measured. Crops are saved for pass 2 (gpt-5) where they
+    # actually move the needle on label disambiguation.
+    pass1 = await propose_mapping(field_descriptions, crops=None, model=MODEL_FAST)
+    t_pass1 = time.perf_counter() - t0
+    print(
+        f"propose_mapping_two_pass: pass 1 (mini, {len(field_descriptions)} fields, no crops) "
+        f"finished in {t_pass1:.1f}s",
+        flush=True,
+    )
+
+    # Build the subset that needs a second look.
+    allowlist = _CANONICAL_PATH_ALLOWLIST
+    by_field: dict[str, ProposedField] = {f.pdf_field: f for f in pass1.fields}
+    desc_by_field: dict[str, dict] = {fd.get("pdf_field"): fd for fd in field_descriptions if fd.get("pdf_field")}
+    pass2_descs: list[dict] = []
+    for fd in field_descriptions:
+        name = fd.get("pdf_field")
+        if not name:
+            continue
+        proposed = by_field.get(name)
+        if proposed is None or _needs_second_pass(proposed, allowlist):
+            pass2_descs.append(fd)
+
+    if not pass2_descs:
+        # Mini was confident on everything. Lucky path: skip pass 2.
+        return pass1
+
+    print(
+        f"propose_mapping_two_pass: pass1={len(pass1.fields)} fields, "
+        f"pass2={len(pass2_descs)} fields need gpt-5 escalation",
+        flush=True,
+    )
+
+    t1 = time.perf_counter()
+    try:
+        pass2 = await propose_mapping(pass2_descs, crops=crops, model=MODEL)
+    except AIMappingError as e:
+        # Pass 2 failed entirely — keep mini's pass 1. This is a quality
+        # regression, not a fatal error: the user gets a mapping that's
+        # less accurate than ideal but more accurate than empty.
+        print(
+            f"propose_mapping_two_pass: pass 2 failed ({e}); "
+            f"falling back to pass 1 (mini) results only",
+            flush=True,
+        )
+        return pass1
+
+    t_pass2 = time.perf_counter() - t1
+    print(
+        f"propose_mapping_two_pass: pass 2 (gpt-5, {len(pass2_descs)} fields) "
+        f"finished in {t_pass2:.1f}s",
+        flush=True,
+    )
+
+    # Merge: pass 2 wins for any field it touched.
+    for f in pass2.fields:
+        by_field[f.pdf_field] = f
+
+    # Rebuild in original positional order.
+    merged: list[ProposedField] = []
+    for fd in field_descriptions:
+        name = fd.get("pdf_field")
+        if name and name in by_field:
+            merged.append(by_field[name])
+    return ProposedMapping(fields=merged)
 
 
 # Allowlist of canonical paths the AI is allowed to propose. Derived from
@@ -898,33 +1117,37 @@ def _is_handfill_extra(extra_field_name: str | None) -> bool:
 # AI sometimes invents extras anyway. This deterministic rewrite catches the
 # misses without another AI round-trip.
 #
-# Each rule = (tuple of required token substrings, canonical_path). All tokens
-# in the tuple must appear in the snake_case extra_field_name for the rule to
-# fire. Order matters — more specific rules first.
-_EXTRA_TO_CANONICAL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
-    # County. "covered_counties_list_1", "county_ies", "counties_field" all → county.
-    (("count",), "county"),
+# Each rule = (tuple of token-GROUPS, canonical_path).
+# A "token group" is a tuple of substrings; ANY substring in the group matches
+# (OR), but ALL groups must match (AND). This lets us say "needs 'count' AND
+# ('y' OR 'ies')" without re-listing both forms — necessary because
+# "account_number" contains "count" but no "y"/"ies"; "covered_counties_list"
+# contains "count" + "ies"; "primary_county" contains "count" + "y".
+# Order matters — more specific rules first.
+_EXTRA_TO_CANONICAL_RULES: tuple[tuple[tuple[tuple[str, ...], ...], str], ...] = (
+    # County. "covered_counties_list_1", "county_ies", "primary_county" all → county.
+    # Requires "count" AND a county-distinguishing suffix ("y" or "ies"). Without
+    # the suffix, "account_number", "discount_percent", "encounter_id" would all
+    # falsely match because they contain "count" as a substring.
+    ((("count",), ("y", "ies")), "county"),
     # Brokerage license vs agent license. The Firm row's Lic # is brokerage_license;
     # the salesperson row's Lic # is agent.license. The AI conflates them most often
     # by emitting brokerage-flavored extras names.
-    (("brokerage", "license"), "agent.brokerage_license"),
-    (("brokerage", "lic"), "agent.brokerage_license"),
-    (("firm", "license"), "agent.brokerage_license"),
-    (("firm", "lic"), "agent.brokerage_license"),
+    ((("brokerage",), ("license", "lic")), "agent.brokerage_license"),
+    ((("firm",), ("license", "lic")), "agent.brokerage_license"),
     # Brokerage firm name itself.
-    (("brokerage", "firm"), "agent.brokerage"),
-    (("broker", "firm"), "agent.brokerage"),
+    ((("brokerage",), ("firm",)), "agent.brokerage"),
+    ((("broker",), ("firm",)), "agent.brokerage"),
     # Brokerage address pieces.
-    (("brokerage", "address"), "agent.brokerage_address"),
-    (("broker", "address"), "agent.brokerage_address"),
+    ((("brokerage",), ("address",)), "agent.brokerage_address"),
+    ((("broker",), ("address",)), "agent.brokerage_address"),
     # Property city / state / zip when the AI tries to name them.
-    (("property", "city"), "property.city"),
-    (("property", "state"), "property.state"),
-    (("property", "zip"), "property.zip"),
+    ((("property",), ("city",)), "property.city"),
+    ((("property",), ("state",)), "property.state"),
+    ((("property",), ("zip",)), "property.zip"),
     # Commission/compensation.
-    (("compensation", "percent"), "commission_amount"),
-    (("commission", "percent"), "commission_amount"),
-    (("commission", "amount"), "commission_amount"),
+    ((("compensation",), ("percent",)), "commission_amount"),
+    ((("commission",), ("percent", "amount")), "commission_amount"),
 )
 
 
@@ -939,8 +1162,10 @@ def _coerce_extra_to_canonical(extra_field_name: str | None) -> str | None:
     if not extra_field_name:
         return None
     name = extra_field_name.lower()
-    for tokens, canonical_path in _EXTRA_TO_CANONICAL_RULES:
-        if all(tok in name for tok in tokens):
+    for token_groups, canonical_path in _EXTRA_TO_CANONICAL_RULES:
+        # Each group must have at least one matching substring (OR within
+        # group); every group must match (AND across groups).
+        if all(any(tok in name for tok in group) for group in token_groups):
             if canonical_path in _CANONICAL_PATH_ALLOWLIST:
                 return canonical_path
     return None
