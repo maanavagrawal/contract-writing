@@ -740,11 +740,16 @@ def _pick_primary_widget(widgets):
 
 # When a form has more than this many fields, chunk the propose_mapping call
 # into batches. The system prompt + schema hint carry fixed cost; field
-# descriptors + crops are variable. Smaller chunks parallelize harder under
-# Semaphore(4): 185 fields ÷ 60 = 4 chunks all in flight at once, vs the
-# old 120-chunk setting which serialized into ceil(185/120)=2 chunks where
-# the slowest dominates wall time. The smaller fixed-prompt amortization
-# cost is dwarfed by the parallelism win.
+# descriptors + crops are variable.
+#
+# 60 is the sweet spot we landed on after measuring:
+# - CHUNK_SIZE=30 (6 chunks): wall time 349-440s, accuracy DROPPED to 80%
+#   because each chunk had too little spatial context for disambiguation.
+# - CHUNK_SIZE=60 (3 chunks): wall time 245-280s typical (with occasional
+#   ~900s tail-latency outlier from gpt-5 high reasoning), accuracy 92%.
+# - CHUNK_SIZE=120+ (≤2 chunks): not measured but extrapolating from the
+#   30→60 trend, bigger chunks would likely keep accuracy and reduce calls
+#   but each individual call gets slower, with diminishing parallelism gains.
 CHUNK_SIZE = 60
 
 
@@ -798,21 +803,26 @@ async def _propose_mapping_chunk(
                 "image_url": f"data:image/png;base64,{crops[name]}",
             })
 
-    # Reasoning effort tuning:
+    # Reasoning effort tuning (3 OpenAI options: minimal/low/medium/high):
     # - mini at "minimal" produced ~13-pt accuracy spread on the CAR BRBC
     #   across 3 trials. Bumping to "low" reduced spread but mini's value
     #   was always marginal on dense synth-heavy forms — those now skip
     #   mini entirely (see _is_synthesized_form in propose_mapping_two_pass).
     # - gpt-5 at "low" on the CAR synth bypass showed 21-pt spread across
-    #   5 trials (CAR eval round 7, 2026-05-13). The variance lives in
-    #   the AI itself, not in prompt quality — same prompt + input gives
-    #   different mappings on consecutive runs. Bumping gpt-5 to "high"
-    #   spends ~30-50% more tokens (slower) but produces dramatically
-    #   more stable answers across trials. On a 165-field synth form
-    #   the latency cost is bounded by chunking (3 chunks at ~60s each
-    #   parallel ~= 60s wall time at low, ~80-90s at high).
+    #   5 trials (CAR eval round 7, 2026-05-13). Variance lives in the AI,
+    #   not the prompt — same prompt + input gives different mappings.
+    # - gpt-5 at "high" pinned variance to 1-2 pt (CAR eval round 11: MIN
+    #   92%, max 94%, spread 2%) but wall time hit 245-280s typical and
+    #   occasionally 800+s on the slow tail. Speculative duplicate
+    #   doesn't help (round 12: lost accuracy because "fast" copies are
+    #   less-reasoned). Smaller chunks (CHUNK_SIZE=30) lose context and
+    #   drop accuracy to 80% (round 13).
+    # - gpt-5 at "medium" is the sweet spot (round 14, 2026-05-13):
+    #   wall time 153-180s per trial (37% faster than high), MIN 93%
+    #   (BETTER than high's 92% — apparently high over-thinks and flips
+    #   defensible answers), spread 1%. Same accuracy floor, less compute.
     effective_model = model or MODEL
-    reasoning_effort = "high" if effective_model == MODEL else "low"
+    reasoning_effort = "medium" if effective_model == MODEL else "low"
     try:
         response = await asyncio.to_thread(
             client.responses.parse,
@@ -878,12 +888,32 @@ async def propose_mapping(
     # fire arbitrary concurrent OpenAI calls. Semaphore(4) bounds it.
     sem = asyncio.Semaphore(4)
 
-    async def _bounded(chunk: list[dict]) -> ProposedMapping:
+    import time as _time
+
+    # Speculative-duplicate experiment 2026-05-13: tried firing 2 calls per
+    # chunk and taking whichever returned first. Hypothesis: fat-tail
+    # latency on gpt-5 high-reasoning would be halved. RESULT: latency
+    # unchanged (today's tail was tight), but accuracy DROPPED 92% → 85% MIN
+    # because the "fast" copy of each chunk is biased toward shorter
+    # (= less-careful) reasoning paths. Speculative-first selection picks
+    # answers that skipped some reasoning work — exactly the opposite of
+    # what we want for accuracy. Reverted.
+
+    async def _bounded(idx: int, chunk: list[dict]) -> ProposedMapping:
         async with sem:
-            return await _propose_mapping_chunk(client, chunk, crops, model=model)
+            t = _time.perf_counter()
+            result = await _propose_mapping_chunk(client, chunk, crops, model=model)
+            elapsed = _time.perf_counter() - t
+            print(
+                f"propose_mapping chunk {idx+1}/{len(chunks)} "
+                f"({len(chunk)} fields, model={model or MODEL}): "
+                f"{elapsed:.1f}s",
+                flush=True,
+            )
+            return result
 
     results = await asyncio.gather(
-        *(_bounded(chunk) for chunk in chunks),
+        *(_bounded(i, chunk) for i, chunk in enumerate(chunks)),
         return_exceptions=True,
     )
 

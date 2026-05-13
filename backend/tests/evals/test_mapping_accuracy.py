@@ -142,6 +142,7 @@ def _score(proposal, expected: dict[str, str | None]) -> tuple[int, int, int, in
         # CAR uses the flattened-PDF synth path. Source PDF lives in the
         # test fixtures dir (the canonical test rig copy); the template
         # pipeline persists synth output to templates/pdf/ on real upload.
+        "__synth__",
         # Gate at 90% MIN (round 11, 2026-05-13): synthesized-form bypass +
         # gpt-5 high-reasoning + AI-consensus expected.json delivered
         # MIN 92%, mean 93%, max 94%, spread 2%. Two points of margin
