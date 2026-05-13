@@ -14,3 +14,13 @@ node_modules/
 # Pillar 2: sqlite + persisted generated PDFs
 data/
 templates/generated/
+
+# Local Claude Code config
+.claude/
+
+# Runtime-uploaded templates + AI mapping cache (keyed by SHA-256 hash).
+# The seed templates with human-readable names stay tracked; everything
+# the production app persists at upload time is user data and should not
+# enter git.
+templates/pdf/[0-9a-f]*.pdf
+backend/mappings/[0-9a-f]*.json
