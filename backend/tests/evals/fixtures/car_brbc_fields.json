@@ -1,0 +1,1322 @@
+[
+  {
+    "pdf_field": "f_000_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 1,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_000_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.88
+  },
+  {
+    "pdf_field": "f_000_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Real Estate Broker (Firm)",
+    "page": 1,
+    "page_x_fraction": 0.72,
+    "page_y_fraction": 0.88
+  },
+  {
+    "pdf_field": "f_000_003",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By  DRE Lic. #  Date | ABOVE: Agent  DRE Lic. # | BELOW: (Salesperson or Broker-Associate, if any)",
+    "page": 1,
+    "page_x_fraction": 0.33,
+    "page_y_fraction": 0.88
+  },
+  {
+    "pdf_field": "f_000_004",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.85
+  },
+  {
+    "pdf_field": "f_000_005",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Agent  DRE Lic. # | ABOVE: Buyer  Seller  Landlord  Tenant  Date Buyer  Seller  Landlord  Tenant  Date | BELOW: Real Estate Broker (Firm)",
+    "page": 1,
+    "page_x_fraction": 0.41,
+    "page_y_fraction": 0.85
+  },
+  {
+    "pdf_field": "f_000_006",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_007",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.55,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_008",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 1,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_009",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.55,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_010",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: DISCLOSURE REGARDING",
+    "page": 1,
+    "page_x_fraction": 0.07,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_000_011",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.26,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_012",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.19,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_013",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date | ABOVE: THE SECOND PAGE. Buyer  Seller  Landlord  Tenant  Date | BELOW: Agent  DRE Lic. #",
+    "page": 1,
+    "page_x_fraction": 0.13,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_014",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: THE SECOND PAGE. Buyer  Seller  Landlord  Tenant  Date | BELOW: Agent  DRE Lic. #",
+    "page": 1,
+    "page_x_fraction": 0.07,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_000_015",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.26,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_016",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.19,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_017",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Buyer  Seller  Landlord  Tenant  Date | ABOVE: I/WE ACKNOWLEDGE RECEIPT OF A COPY OF THIS DISCLOSURE AND THE PORTIONS OF THE CIVIL CODE PRINTED ON THE SECOND PAGE. | BELOW: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.13,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_018",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: I/WE ACKNOWLEDGE RECEIPT OF A COPY OF THIS DISCLOSURE AND THE PORTIONS OF THE CIVIL CODE PRINTED ON THE SECOND PAGE. | BELOW: Buyer  Seller  Landlord  Tenant  Date",
+    "page": 1,
+    "page_x_fraction": 0.07,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_000_019",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: (If checked) This form is being provided in connection with a transaction for a leasehold interest exceeding one year as per Civil | BELOW: Code \u00a7\u00a7 2079.13(j), (k), and (l).",
+    "page": 1,
+    "page_x_fraction": 0.07,
+    "page_y_fraction": 0.09
+  },
+  {
+    "pdf_field": "f_000_020",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: (C.A.R. Form AD, Revised 12/24) (As required by the Civil Code) | BELOW: (If checked) This form is being provided in connection with a transaction for a leasehold interest exceeding one year as per Civil",
+    "page": 1,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.07
+  },
+  {
+    "pdf_field": "f_001_000",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.64
+  },
+  {
+    "pdf_field": "f_001_001",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Is the broker of (check one):   the buyer; or   both the buyer and seller. (dual agent) Buyer's Agent DO NOT COMPLETE. SAMPLE ONLY License Number ______________ | ABOVE: ler's Agent. (salesperson or broker associate)   both the Buyer's and Seller's Agent. (dual agent) Buyer's Brokerage Firm DO",
+    "page": 2,
+    "page_x_fraction": 0.45,
+    "page_y_fraction": 0.64
+  },
+  {
+    "pdf_field": "f_001_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: ler's Agent. (salesperson or broker associate)   both the Buyer's and Seller's Agent. (dual agent) Buyer's Brokerage Firm DO NOT COMPLETE. SAMPLE ONLY License Number ______________",
+    "page": 2,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.61
+  },
+  {
+    "pdf_field": "f_001_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.61
+  },
+  {
+    "pdf_field": "f_001_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Is the broker of (check one):   the seller; or   both the buyer and seller. (dual agent) Seller's Agent DO NOT COMPLETE. SAMPLE ONLY License Number ______________ | ABOVE: The confirmation required by subdivisions (a) and (b) shall be in the following form: Seller's Brokerage Firm DO NOT COMPL",
+    "page": 2,
+    "page_x_fraction": 0.45,
+    "page_y_fraction": 0.58
+  },
+  {
+    "pdf_field": "f_001_005",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.58
+  },
+  {
+    "pdf_field": "f_001_006",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: the execution of that contract by the seller. (c) Seller's Brokerage Firm DO NOT COMPLETE. SAMPLE ONLY License Number ______________",
+    "page": 2,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.56
+  },
+  {
+    "pdf_field": "f_001_007",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 2,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.56
+  },
+  {
+    "pdf_field": "f_002_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 3,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_002_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_002_002",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.8,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_002_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.61,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_002_004",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.54,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_002_005",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: Buyer's Broker's obligation to represent Buyer in a transaction is contingent upon a seller's",
+    "page": 3,
+    "page_x_fraction": 0.69,
+    "page_y_fraction": 0.88
+  },
+  {
+    "pdf_field": "f_002_006",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Within 5 (or ) | ABOVE: Exclusive: Cancellation effective 30 OR  (not to exceed 30) days after receipt. | RIGHT: from the execution of this Agreement. | BELOW: C.A.R. Form BFPI attached.",
+    "page": 3,
+    "page_x_fraction": 0.52,
+    "page_y_fraction": 0.82
+  },
+  {
+    "pdf_field": "f_002_007",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: .",
+    "page": 3,
+    "page_x_fraction": 0.78,
+    "page_y_fraction": 0.76
+  },
+  {
+    "pdf_field": "f_002_008",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: The \"Continuation Period\" shall be  calendar days after the following:",
+    "page": 3,
+    "page_x_fraction": 0.65,
+    "page_y_fraction": 0.68
+  },
+  {
+    "pdf_field": "f_002_009",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Amount of Compensation % of the acquisition price AND, if any, $ ; OR  $ , | BELOW: OR  see attached Broker-created compensation schedule.",
+    "page": 3,
+    "page_x_fraction": 0.52,
+    "page_y_fraction": 0.61
+  },
+  {
+    "pdf_field": "f_002_010",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.75,
+    "page_y_fraction": 0.59
+  },
+  {
+    "pdf_field": "f_002_011",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Amount of Compensation % of the acquisition price AND, if any, $ ; | BELOW: OR  $ ,",
+    "page": 3,
+    "page_x_fraction": 0.45,
+    "page_y_fraction": 0.59
+  },
+  {
+    "pdf_field": "f_002_012",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Properties Excluded from",
+    "page": 3,
+    "page_x_fraction": 0.69,
+    "page_y_fraction": 0.51
+  },
+  {
+    "pdf_field": "f_002_013",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: County(ies):",
+    "page": 3,
+    "page_x_fraction": 0.69,
+    "page_y_fraction": 0.47
+  },
+  {
+    "pdf_field": "f_002_014",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (all that are checked apply) County(ies): City(ies):",
+    "page": 3,
+    "page_x_fraction": 0.72,
+    "page_y_fraction": 0.45
+  },
+  {
+    "pdf_field": "f_002_015",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: County(ies): | ABOVE: Industrial,  Vacant Land,  Commercial,  Tenancy in common, The following specified property(ies) only: | BELOW: City(ies):",
+    "page": 3,
+    "page_x_fraction": 0.73,
+    "page_y_fraction": 0.43
+  },
+  {
+    "pdf_field": "f_002_016",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 3,
+    "page_x_fraction": 0.81,
+    "page_y_fraction": 0.24
+  },
+  {
+    "pdf_field": "f_002_017",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Beginning:  (date) Ending at 11:59 P.M. on  (date) | BELOW: OR upon completion of a resulting transaction, whichever occurs first.",
+    "page": 3,
+    "page_x_fraction": 0.54,
+    "page_y_fraction": 0.24
+  },
+  {
+    "pdf_field": "f_002_018",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Date Prepared: | ABOVE: (Non-Exclusive unless Exclusive is checked and initialed)",
+    "page": 3,
+    "page_x_fraction": 0.23,
+    "page_y_fraction": 0.1
+  },
+  {
+    "pdf_field": "f_002_019",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: AND BROKER COMPENSATION AGREEMENT",
+    "page": 3,
+    "page_x_fraction": 0.1,
+    "page_y_fraction": 0.06
+  },
+  {
+    "pdf_field": "f_002_020",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: BUYER REPRESENTATION",
+    "page": 3,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_002_021",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: G(2) 9B(2) Buyer does not have sufficient | ABOVE: Time to deliver Buyer personal/ financial information | RIGHT: Buyer's Broker's obligation to represent Buyer in a transaction is contingent upon a seller's | BELOW: funds to pay Broker.",
+    "page": 3,
+    "page_x_fraction": 0.19,
+    "page_y_fraction": 0.85
+  },
+  {
+    "pdf_field": "f_002_022",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: financial information | RIGHT: C.A.R. Form BFPI attached. | BELOW: Buyer's Broker's obligation to represent Buyer in a transaction is contingent upon a seller's",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.83
+  },
+  {
+    "pdf_field": "f_002_023",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: .",
+    "page": 3,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.76
+  },
+  {
+    "pdf_field": "f_002_024",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: E(4) | RIGHT: Broker is paying a referral fee related to the representation of Buyer. See attached C.A.R. Form RAD. | BELOW: Cancellation Rights and Notice Non-exclusive: Cancellation effective upon receipt OR  days after receipt;",
+    "page": 3,
+    "page_x_fraction": 0.19,
+    "page_y_fraction": 0.74
+  },
+  {
+    "pdf_field": "f_002_025",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: C Buyer Preferences and Priorities | BELOW: Properties Excluded from",
+    "page": 3,
+    "page_x_fraction": 0.19,
+    "page_y_fraction": 0.49
+  },
+  {
+    "pdf_field": "f_002_026",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: (all that are checked apply)",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.45
+  },
+  {
+    "pdf_field": "f_002_027",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: Industrial,  Vacant Land,  Commercial,  Tenancy in common, The following specified property(ies) only: | BELOW: City(ies):",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.44
+  },
+  {
+    "pdf_field": "f_002_028",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: including condominiums and manufactured homes (SFR), Multi-family residential with two to four units,  with 5 or more units,",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.4
+  },
+  {
+    "pdf_field": "f_002_029",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: including condominiums and manufactured homes (SFR), | BELOW: The following specified property(ies) only:",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.39
+  },
+  {
+    "pdf_field": "f_002_030",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: including condominiums and manufactured homes (SFR), Multi-family residential with two to four units,  with 5 or more units,",
+    "page": 3,
+    "page_x_fraction": 0.71,
+    "page_y_fraction": 0.38
+  },
+  {
+    "pdf_field": "f_002_031",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: provides services for the types of properties and in the locations specified below. | BELOW: Industrial,  Vacant Land,  Commercial,  Tenancy in common,",
+    "page": 3,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.38
+  },
+  {
+    "pdf_field": "f_002_032",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: (Non-Exclusive unless Exclusive is checked and initialed) (C.A.R. Form BRBC, Revised 12/25) | BELOW: Date Prepared:",
+    "page": 3,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.08
+  },
+  {
+    "pdf_field": "f_003_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: www.lwolf.com",
+    "page": 4,
+    "page_x_fraction": 0.69,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_003_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.84,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_003_002",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.77,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_003_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.58,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_003_004",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_003_005",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.74,
+    "page_y_fraction": 0.05
+  },
+  {
+    "pdf_field": "f_003_006",
+    "field_type": "/Btn",
+    "neighbor_text": "",
+    "page": 4,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.05
+  },
+  {
+    "pdf_field": "f_004_000",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5,
+    "page_x_fraction": 0.84,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_004_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5,
+    "page_x_fraction": 0.77,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_004_002",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5,
+    "page_x_fraction": 0.58,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_004_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 5,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.92
+  },
+  {
+    "pdf_field": "f_005_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: www.lwolf.com",
+    "page": 6,
+    "page_x_fraction": 0.72,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_005_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6,
+    "page_x_fraction": 0.84,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_005_002",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6,
+    "page_x_fraction": 0.77,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_005_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6,
+    "page_x_fraction": 0.58,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_005_004",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 6,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.93
+  },
+  {
+    "pdf_field": "f_006_000",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.76
+  },
+  {
+    "pdf_field": "f_006_001",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By (Broker/Agent)  Date Tel.  E-mail DRE Lic #",
+    "page": 7,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.76
+  },
+  {
+    "pdf_field": "f_006_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By (Broker/Agent)  Date Tel.  E-mail DRE Lic # | ABOVE: Tel.  E-mail DRE Lic # | BELOW: More than one agent from the same firm represents Buyer.  Additional Agent Acknowledgement (C.A.R. Form AAA) attached.",
+    "page": 7,
+    "page_x_fraction": 0.2,
+    "page_y_fraction": 0.76
+  },
+  {
+    "pdf_field": "f_006_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.74
+  },
+  {
+    "pdf_field": "f_006_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By (Broker/Agent)  Date",
+    "page": 7,
+    "page_x_fraction": 0.49,
+    "page_y_fraction": 0.74
+  },
+  {
+    "pdf_field": "f_006_005",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.72
+  },
+  {
+    "pdf_field": "f_006_006",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By (Broker/Agent)  Date Tel.  E-mail DRE Lic #",
+    "page": 7,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.72
+  },
+  {
+    "pdf_field": "f_006_007",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.71
+  },
+  {
+    "pdf_field": "f_006_008",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Address  City  State  Zip By (Broker/Agent)  Date",
+    "page": 7,
+    "page_x_fraction": 0.49,
+    "page_y_fraction": 0.71
+  },
+  {
+    "pdf_field": "f_006_009",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.69
+  },
+  {
+    "pdf_field": "f_006_010",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.8,
+    "page_y_fraction": 0.69
+  },
+  {
+    "pdf_field": "f_006_011",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.65,
+    "page_y_fraction": 0.69
+  },
+  {
+    "pdf_field": "f_006_012",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Real Estate Broker (Firm) DRE Lic # Address  City  State  Zip | ABOVE: BROKER SIGNATURE(S): | BELOW: By (Broker/Agent)  Date",
+    "page": 7,
+    "page_x_fraction": 0.33,
+    "page_y_fraction": 0.69
+  },
+  {
+    "pdf_field": "f_006_013",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.68
+  },
+  {
+    "pdf_field": "f_006_014",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: BROKER SIGNATURE(S): Real Estate Broker (Firm) DRE Lic #",
+    "page": 7,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.68
+  },
+  {
+    "pdf_field": "f_006_015",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.63
+  },
+  {
+    "pdf_field": "f_006_016",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Printed name of Buyer: Printed Name of Legally Authorized Signer:  Title, if applicable,",
+    "page": 7,
+    "page_x_fraction": 0.53,
+    "page_y_fraction": 0.63
+  },
+  {
+    "pdf_field": "f_006_017",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (Signature) By,  Date: Printed name of Buyer:",
+    "page": 7,
+    "page_x_fraction": 0.6,
+    "page_y_fraction": 0.61
+  },
+  {
+    "pdf_field": "f_006_018",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.6
+  },
+  {
+    "pdf_field": "f_006_019",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (Signature) By,  Date:",
+    "page": 7,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.6
+  },
+  {
+    "pdf_field": "f_006_020",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.58
+  },
+  {
+    "pdf_field": "f_006_021",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Printed name of Buyer: Printed Name of Legally Authorized Signer:  Title, if applicable,",
+    "page": 7,
+    "page_x_fraction": 0.53,
+    "page_y_fraction": 0.58
+  },
+  {
+    "pdf_field": "f_006_022",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (Signature) By,  Date: Printed name of Buyer:",
+    "page": 7,
+    "page_x_fraction": 0.6,
+    "page_y_fraction": 0.57
+  },
+  {
+    "pdf_field": "f_006_023",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.55
+  },
+  {
+    "pdf_field": "f_006_024",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (Signature) By,  Date: | ABOVE: (B) The name(s) of the Legally Authorized Signer(s) is/are: ,  .",
+    "page": 7,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.55
+  },
+  {
+    "pdf_field": "f_006_025",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 7,
+    "page_x_fraction": 0.83,
+    "page_y_fraction": 0.51
+  },
+  {
+    "pdf_field": "f_006_026",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: for additional terms.",
+    "page": 7,
+    "page_x_fraction": 0.61,
+    "page_y_fraction": 0.51
+  },
+  {
+    "pdf_field": "f_006_027",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: (2) Full entity name: The following is the full name of the entity (if a trust, enter the complete trust name; if under probate, enter full name of the estate, including case #): | BELOW: .",
+    "page": 7,
+    "page_x_fraction": 0.67,
+    "page_y_fraction": 0.36
+  },
+  {
+    "pdf_field": "f_006_028",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer's Initials / | ABOVE: .",
+    "page": 7,
+    "page_x_fraction": 0.81,
+    "page_y_fraction": 0.21
+  },
+  {
+    "pdf_field": "f_006_029",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer's Initials / | ABOVE: .",
+    "page": 7,
+    "page_x_fraction": 0.72,
+    "page_y_fraction": 0.21
+  },
+  {
+    "pdf_field": "f_006_030",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: Tel.  E-mail DRE Lic # | RIGHT: Two Brokers with different companies are representing the Buyer.  Co-Buyer Brokers information is on the attached Additional | BELOW: Broker Acknowledgement (C.A.R. Form ABA)",
+    "page": 7,
+    "page_x_fraction": 0.09,
+    "page_y_fraction": 0.79
+  },
+  {
+    "pdf_field": "f_006_031",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: By (Broker/Agent)  Date | RIGHT: More than one agent from the same firm represents Buyer.  Additional Agent Acknowledgement (C.A.R. Form AAA) attached. | BELOW: Two Brokers with different companies are representing the Buyer.  Co-Buyer Brokers information is on the attached Additional",
+    "page": 7,
+    "page_x_fraction": 0.09,
+    "page_y_fraction": 0.77
+  },
+  {
+    "pdf_field": "f_006_032",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: (Signature) By,  Date: Printed name of Buyer: | RIGHT: Additional Signature Addendum attached (C.A.R. Form ASA)",
+    "page": 7,
+    "page_x_fraction": 0.09,
+    "page_y_fraction": 0.64
+  },
+  {
+    "pdf_field": "f_006_033",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Printed Name of Legally Authorized Signer:  Title, if applicable, | ABOVE: (Signature) By,  Date: | BELOW: Additional Signature Addendum attached (C.A.R. Form ASA)",
+    "page": 7,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.63
+  },
+  {
+    "pdf_field": "f_006_034",
+    "field_type": "/Btn",
+    "neighbor_text": "LEFT: Printed Name of Legally Authorized Signer:  Title, if applicable, | ABOVE: (Signature) By,  Date: | BELOW: (Signature) By,  Date:",
+    "page": 7,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.58
+  },
+  {
+    "pdf_field": "f_006_035",
+    "field_type": "/Btn",
+    "neighbor_text": "ABOVE: ing below, Buyer acknowledges that they have received a copy of this Buyer Representation and Broker Compensation Agreement, and they have read, understand, and agree to its terms. | RIGHT: ENTITY BUYERS: (Note: If this paragraph is completed, a Representative Capacity Signature Disclosure (C",
+    "page": 7,
+    "page_x_fraction": 0.09,
+    "page_y_fraction": 0.29
+  },
+  {
+    "pdf_field": "f_007_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 8,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_007_001",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: OR SELLER - DISCLOSURE AND CONSENT",
+    "page": 8,
+    "page_x_fraction": 0.1,
+    "page_y_fraction": 0.06
+  },
+  {
+    "pdf_field": "f_007_002",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: POSSIBLE REPRESENTATION OF MORE THAN ONE BUYER",
+    "page": 8,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_007_003",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: (C.A.R. Form PRBS, Revised 6/25) | BELOW: 1. BROKER AGENCY RELATIONSHIP WITH MULTIPLE PRINCIPALS: A real estate broker (\u201cBrokerage\u201d), whether",
+    "page": 8,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.08
+  },
+  {
+    "pdf_field": "f_008_000",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.26
+  },
+  {
+    "pdf_field": "f_008_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.26
+  },
+  {
+    "pdf_field": "f_008_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By  DRE Lic #  Date",
+    "page": 9,
+    "page_x_fraction": 0.35,
+    "page_y_fraction": 0.26
+  },
+  {
+    "pdf_field": "f_008_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.25
+  },
+  {
+    "pdf_field": "f_008_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller's Brokerage Firm  DRE Lic #",
+    "page": 9,
+    "page_x_fraction": 0.5,
+    "page_y_fraction": 0.25
+  },
+  {
+    "pdf_field": "f_008_005",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.22
+  },
+  {
+    "pdf_field": "f_008_006",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.22
+  },
+  {
+    "pdf_field": "f_008_007",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: By  DRE Lic #  Date | ABOVE: Seller  Date",
+    "page": 9,
+    "page_x_fraction": 0.35,
+    "page_y_fraction": 0.22
+  },
+  {
+    "pdf_field": "f_008_008",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.2
+  },
+  {
+    "pdf_field": "f_008_009",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer's Brokerage Firm  DRE Lic #",
+    "page": 9,
+    "page_x_fraction": 0.5,
+    "page_y_fraction": 0.2
+  },
+  {
+    "pdf_field": "f_008_010",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.17
+  },
+  {
+    "pdf_field": "f_008_011",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller  Date | ABOVE: Seller  Date",
+    "page": 9,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.17
+  },
+  {
+    "pdf_field": "f_008_012",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.15
+  },
+  {
+    "pdf_field": "f_008_013",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller  Date | ABOVE: Buyer  Date | BELOW: Seller  Date",
+    "page": 9,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.15
+  },
+  {
+    "pdf_field": "f_008_014",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.13
+  },
+  {
+    "pdf_field": "f_008_015",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Date | ABOVE: Buyer  Date",
+    "page": 9,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.13
+  },
+  {
+    "pdf_field": "f_008_016",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 9,
+    "page_x_fraction": 0.89,
+    "page_y_fraction": 0.11
+  },
+  {
+    "pdf_field": "f_008_017",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Date | ABOVE: terms and consents to the agency possibilities disclosed. | BELOW: Buyer  Date",
+    "page": 9,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.11
+  },
+  {
+    "pdf_field": "f_009_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 10,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_009_001",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: BROKER COMPENSATION ADVISORY",
+    "page": 10,
+    "page_x_fraction": 0.06,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_009_002",
+    "field_type": "/Btn",
+    "neighbor_text": "BELOW: 1. WHEN SELLERS LIST THEIR PROPERTY FOR SALE THROUGH A REAL ESTATE BROKER THEY",
+    "page": 10,
+    "page_x_fraction": 0.1,
+    "page_y_fraction": 0.08
+  },
+  {
+    "pdf_field": "f_010_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: www.lwolf.com",
+    "page": 11,
+    "page_x_fraction": 0.73,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_010_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 11,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_010_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller/Buyer  Date",
+    "page": 11,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.81
+  },
+  {
+    "pdf_field": "f_010_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 11,
+    "page_x_fraction": 0.88,
+    "page_y_fraction": 0.79
+  },
+  {
+    "pdf_field": "f_010_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Seller/Buyer  Date",
+    "page": 11,
+    "page_x_fraction": 0.46,
+    "page_y_fraction": 0.79
+  },
+  {
+    "pdf_field": "f_011_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 12,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.95
+  },
+  {
+    "pdf_field": "f_011_001",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: (C.A.R. Form BIA, Revised 6/25)",
+    "page": 12,
+    "page_x_fraction": 0.1,
+    "page_y_fraction": 0.06
+  },
+  {
+    "pdf_field": "f_011_002",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: BUYER'S INVESTIGATION ADVISORY",
+    "page": 12,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_011_003",
+    "field_type": "/Btn",
+    "neighbor_text": "BELOW: 1. IMPORTANCE OF PROPERTY INVESTIGATION: Unless otherwise specified in the Agreement, the physical condition",
+    "page": 12,
+    "page_x_fraction": 0.11,
+    "page_y_fraction": 0.08
+  },
+  {
+    "pdf_field": "f_012_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: www.lwolf.com",
+    "page": 13,
+    "page_x_fraction": 0.73,
+    "page_y_fraction": 0.95
+  },
+  {
+    "pdf_field": "f_012_001",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 13,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.27
+  },
+  {
+    "pdf_field": "f_012_002",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Date | ABOVE: Buyer  Date",
+    "page": 13,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.27
+  },
+  {
+    "pdf_field": "f_012_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 13,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.24
+  },
+  {
+    "pdf_field": "f_012_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer  Date | ABOVE: they have read and understand its terms. Buyer is encouraged to read it carefully.",
+    "page": 13,
+    "page_x_fraction": 0.43,
+    "page_y_fraction": 0.24
+  },
+  {
+    "pdf_field": "f_013_000",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Phone:   Fax: www.lwolf.com",
+    "page": 14,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.96
+  },
+  {
+    "pdf_field": "f_013_001",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE: members of the NATIONAL ASSOCIATION OF REALTORS\u00ae who subscribe to its Code of Ethics. Published and Distributed by: | RIGHT: a subsidiary of the CALIFORNIA ASSOCIATION OF REALTORS\u00ae 525 South Virgil Avenue, Los Angeles, California 90020 | BELOW: CCPA REVISED 12/22 (PAGE 1 OF 1)",
+    "page": 14,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.9
+  },
+  {
+    "pdf_field": "f_013_002",
+    "field_type": "/Tx",
+    "neighbor_text": "ABOVE:  DESIRE LEGAL OR TAX ADVICE, CONSULT AN APPROPRIATE PROFESSIONAL. This form is made available to real estate professionals through an agreement with or purchase from the California | BELOW: Published and Distributed by: REAL ESTATE BUSINESS SERVICES, LLC.",
+    "page": 14,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.86
+  },
+  {
+    "pdf_field": "f_013_003",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.54
+  },
+  {
+    "pdf_field": "f_013_004",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer/Seller/Landlord/Tenant  Date",
+    "page": 14,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.54
+  },
+  {
+    "pdf_field": "f_013_005",
+    "field_type": "/Tx",
+    "neighbor_text": "",
+    "page": 14,
+    "page_x_fraction": 0.87,
+    "page_y_fraction": 0.5
+  },
+  {
+    "pdf_field": "f_013_006",
+    "field_type": "/Tx",
+    "neighbor_text": "LEFT: Buyer/Seller/Landlord/Tenant  Date",
+    "page": 14,
+    "page_x_fraction": 0.51,
+    "page_y_fraction": 0.5
+  },
+  {
+    "pdf_field": "f_013_007",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: DISCLOSURE AND NOTICE (C.A.R. Form CCPA, Revised 12/22)",
+    "page": 14,
+    "page_x_fraction": 0.1,
+    "page_y_fraction": 0.07
+  },
+  {
+    "pdf_field": "f_013_008",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: CALIFORNIA CONSUMER PRIVACY ACT ADVISORY, DISCLOSURE AND NOTICE",
+    "page": 14,
+    "page_x_fraction": 0.08,
+    "page_y_fraction": 0.06
+  },
+  {
+    "pdf_field": "f_013_009",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: CALIFORNIA CONSUMER PRIVACY ACT ADVISORY,",
+    "page": 14,
+    "page_x_fraction": 0.13,
+    "page_y_fraction": 0.05
+  },
+  {
+    "pdf_field": "f_013_010",
+    "field_type": "/Tx",
+    "neighbor_text": "RIGHT: CALIFORNIA CONSUMER PRIVACY ACT ADVISORY,",
+    "page": 14,
+    "page_x_fraction": 0.12,
+    "page_y_fraction": 0.04
+  },
+  {
+    "pdf_field": "f_013_011",
+    "field_type": "/Btn",
+    "neighbor_text": "RIGHT: (C.A.R. Form CCPA, Revised 12/22)",
+    "page": 14,
+    "page_x_fraction": 0.12,
+    "page_y_fraction": 0.09
+  }
+]
