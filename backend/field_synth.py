@@ -148,14 +148,20 @@ def _detect_underlines_px(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
             continue
         if w / max(h, 1) < 8:
             continue
-        # Synthesize a thin "field rect" above the underline. AcroForm fields
-        # render their value sitting on top of the underline, so the widget
-        # rect should be a thin band straddling the line. Use line height
-        # × 3 to give text room without overlapping the line below.
+        # Synthesize a "field rect" sitting on top of the underline. The
+        # rect's HEIGHT controls how tall the writeable area is — viewers
+        # using /NeedAppearances draw the value inside this rect with the
+        # font from /DA. Too short and the text overflows downward into
+        # the row below (CAR BRBC 2026-05-12 bug: 5pt rect, 10pt font →
+        # "Oakland" rendering halfway into the B(3) row).
+        #
+        # At 200 DPI: 32 px = ~11.5 PDF pt. That fits a ~6-8pt font with
+        # padding above and below the underline.
+        #
         # Clamp y >= 0 so an underline near the top of the image doesn't
         # spawn a widget with negative pixel-y (which would become an
         # out-of-page PDF rect post Y-flip).
-        field_h = max(h * 3, 14)
+        field_h = max(h * 7, 32)
         new_y = max(0, y - field_h + h)
         out.append((x, new_y, w, field_h))
     return out
@@ -417,11 +423,25 @@ def _make_widget_dict(
         d[NameObject("/FT")] = NameObject("/Tx")
         d[NameObject("/Ff")] = NumberObject(0)
         d[NameObject("/V")] = TextStringObject("")
-        # /DA (default appearance) is required by spec on /Tx widgets. Many
-        # viewers tolerate its absence; Acrobat is strict and will refuse to
-        # render the field value without it. Helvetica 10pt black is the
-        # spec-default safe baseline — matches what Multi-Board ships.
-        d[NameObject("/DA")] = TextStringObject("/Helv 10 Tf 0 g")
+        # /DA = default appearance. Font size MUST fit the rect height or
+        # /NeedAppearances viewers render text spilling out of the widget —
+        # the CAR BRBC 2026-05-12 bug ("Oakland" rendering halfway into the
+        # B(3) row) traced back to a fixed 10pt font in a 5pt-tall rect.
+        #
+        # Underline-derived rects span the underline + ~3-line-heights above
+        # it. The visual "writeable area" the user sees on the printed form
+        # is roughly the rect height in PDF points. Pick a font size that
+        # leaves ~25% top/bottom padding so descenders don't clip into the
+        # underline and ascenders don't clip into the label above.
+        rect_h_pt = max(0.0, ury - lly)
+        # 0.55 multiplier: 10pt rect → 5.5pt text. 14pt rect → 7.7pt. 20pt
+        # rect → 11pt. Clamp to [6, 11]: below 6pt is unreadable; above 11pt
+        # starts looking oversized vs the surrounding form text.
+        font_pt = max(6.0, min(11.0, rect_h_pt * 0.55))
+        d[NameObject("/DA")] = TextStringObject(f"/Helv {font_pt:.1f} Tf 0 g")
+        # /Q = quadding (text alignment). 0=left, 1=center, 2=right. Left
+        # matches every form blank in the wild.
+        d[NameObject("/Q")] = NumberObject(0)
     return d
 
 
