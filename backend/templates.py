@@ -288,6 +288,14 @@ Rules:
                                                   period end date')
     "% of acquisition price" / "Amount of Compensation" / "Compensation %"
                                                → commission_amount
+    "Amount Due [BROKERAGE]" / "Compass Owed"  → commission_amount  (the
+        brokerage is owed = commission. NOT 'retainer' — retainer is an
+        UPFRONT payment for representation services, not the close-of-deal
+        commission. If the label includes a brokerage name + "due" or
+        "owed", treat it as commission_amount.)
+    "Property Address" as a wide one-line blank → property.address_full
+        (use the composite variant when the address sits on a single
+        wide line, NOT property.address which is street-only.)
     "Purchase Price"                           → purchase_price
     "Earnest Money"                            → earnest_money
     "Closing"                                  → closing_date
@@ -301,6 +309,44 @@ Rules:
     Form titles, page numbers, footers, "Produced with..." watermarks,
       copyright text, paragraph headings       → (extra_field, type=text,
                                                   description='static page text')
+
+  ============ WHEN TO RETURN NEITHER (no canonical, no extra) ============
+
+  Some fields are HAND-FILLED AT SIGNING TIME — the agent's notes will
+  never contain a value for them, and the canonical schema has no slot
+  for them either. For these, set canonical_path=None AND
+  extra_field_name=None. The system will leave the field blank in the
+  generated PDF (correct outcome — the human writes it on paper).
+
+  Specifically, do NOT map these to "today" or any agent.* path, even
+  when the label looks date-like or contact-like — these are SIGNING
+  CEREMONY fields, not auto-fill data:
+    - "Date of Acceptance" / "Date Presented" — dates tied to a buyer
+      or seller acceptance event that happens AFTER generation.
+    - "Sales Manager Signed Date" / "Manager Approval Date" / dates
+      tied to an internal approval workflow OTHER THAN the agent.
+      KEY DISTINCTION: dates tied to the AGENT signing the form (e.g.
+      "Agent Signed Date", "Sign Date" in the agent's row) DO map
+      to today — the agent fills the form today and signs as part of
+      that workflow. Only manager/director/approver/buyer/seller dates
+      are null (they sign separately, at unknown future times).
+    - "Seller Rejection date and time" / "presented to Seller on ___"
+      / any "this offer was [verb] on ___" line — these are events
+      that happen DURING signing, not data from the agent's notes.
+    - Header rows on Multi-Board-style multi-column sections like
+      "Buyer's Brokerage MLS # State License # Seller's Brokerage..."
+      where the field sits BELOW a label row describing *what the
+      column means*, not *who/what value goes there for this deal*.
+    - Cancellation/termination date fields tied to events that haven't
+      happened yet.
+    - DRE Lic # / MLS # fields in the SELLER'S column (right side of a
+      stacked broker block) — those belong to the OTHER agent, not
+      the logged-in agent's profile. Map LEFT-column license fields
+      to agent.brokerage_license or agent.license; SELLER'S-column
+      versions get null + extra_field('static_handfill_field').
+
+  When in doubt: if the field appears next to a "Signature" line or
+  in a "FOR INFORMATION ONLY" header row, prefer null over today.
 
   ============ WHEN TO USE template_extras ============
 
@@ -428,10 +474,47 @@ Computed values (auto-filled at generate time, use as canonical_path):
   lease_end_year_2digit       YY split of lease_end
   additional_earnest_month_day, additional_earnest_year_2digit (same pattern)
 
+  # /Btn appearance-state variants — for Multi-Board-style forms that have
+  # ONE WIDGET PER OPTION (not a radio group). Each option is a /Btn that
+  # needs to be set to "/On" or "/Off" depending on whether its specific
+  # value matches the chosen one. Pick the variant matching the option:
+  property_type_attached_state    "/On" when property_type=='attached'
+  property_type_detached_state    "/On" when property_type=='detached'
+  property_type_multi_unit_state  "/On" when property_type=='multi_unit'
+  escrowee_state                  multi-state radio for escrowee
+  seller_pays_brokerage_state     /Btn fired when seller pays buyer broker
+  commission_percent_value        % component of commission_amount split
+  commission_dollar_value         $ component of commission_amount split
+  loan_rate_type_state            /Btn state for fixed vs adjustable rate
+  loan_type_state                 /Btn state for conventional/fha/etc.
+  statutory_state                 misc IL statutory radio
+
 When you see a date field, prefer a computed value over making it an
 extra_field. "Today's Date" → canonical_path='today'. "Sign Date" → 'today'.
 "Lease End Date" → 'lease_end'. Only use extra_field for dates that aren't
 the fill date and aren't already a canonical schema field.
+
+============ COMPUTED-VS-BASE: PICK THE RIGHT VARIANT ============
+
+When a field is one slot in a LARGER composite value, route it to the
+computed-value variant, NOT the base canonical:
+
+  - Split dates: a date split across two boxes ("___, 20___" / "MM/DD" +
+    "YY" / underline + ", 20" + underline) gets the *_month_day +
+    *_year_2digit pair, NOT the bare canonical (closing_date,
+    lease_end, etc.). The bare canonical fills the whole ISO date into
+    one box and looks wrong.
+  - Joined-names fields: a single wide blank labeled "Buyer(s)" /
+    "Seller(s)" / "Print Buyer Name(s)" on Multi-Board-style forms gets
+    buyer_names_joined / seller_names_joined (not tenant_or_buyer_names
+    / seller_names — those are LIST-typed and render as Python repr
+    when fill_pdf interpolates a list into a single text box).
+  - Property-type /Btn options: when the form has SEPARATE checkboxes
+    for "Single Family Attached", "Single Family Detached", "Multi-Unit"
+    each one is its OWN field and gets the matching *_state variant —
+    not the bare property_type which is the enum string itself.
+  - Property address rendered as one line ("ADDR City ST ZIP" in a wide
+    blank): use property.address_full (it's pre-joined).
 """
 
 
@@ -748,12 +831,20 @@ async def propose_mapping(
                 pdf_field = fd.get("pdf_field") or ""
                 if not pdf_field:
                     continue
+                # confidence=1 (not 0): the ProposedField schema enforces
+                # ge=1 because gpt is never asked to emit < 1. The placeholder
+                # has to satisfy validation or the chunk-failure-recovery path
+                # itself raises ValidationError and obliterates the whole
+                # upload — losing the OTHER chunks' successful mappings too.
+                # Discovered during the eval run 2026-05-13 when every chunk
+                # failed (auth error in test env) and the recovery branch
+                # crashed Pydantic.
                 all_fields.append(
                     ProposedField(
                         pdf_field=pdf_field,
                         canonical_path=None,
                         template_value=None,
-                        confidence=0,
+                        confidence=1,
                         reasoning=f"AI mapping chunk failed: {type(result).__name__}",
                     )
                 )

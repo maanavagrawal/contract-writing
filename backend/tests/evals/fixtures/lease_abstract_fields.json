@@ -3,102 +3,136 @@
     "pdf_field": "Todays Date",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: Today\u2019s Date: | ABOVE: Lease Abstract | RIGHT: Agent :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.34,
+    "page_y_fraction": 0.17
   },
   {
     "pdf_field": "Agent",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: Agent :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.72,
+    "page_y_fraction": 0.17
   },
   {
     "pdf_field": "Lease Sign Date",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Unit No.: Lease Sign Date: | RIGHT: :",
-    "page": 1
+    "neighbor_text": "LEFT: Lease Sign Date: | BELOW: Lease End Date:",
+    "page": 1,
+    "page_x_fraction": 0.42,
+    "page_y_fraction": 0.29
   },
   {
     "pdf_field": "Lease Start Date",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Lease Sign Date: Lease Star t Date: | ABOVE: City : | RIGHT: Lease End Date:",
-    "page": 1
+    "neighbor_text": "LEFT: Lease Star t Date: | ABOVE: City : | RIGHT: Lease End Date: | BELOW: Net Monthly Rent:",
+    "page": 1,
+    "page_x_fraction": 0.42,
+    "page_y_fraction": 0.33
   },
   {
     "pdf_field": "Rental Amount",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Lease Star M arket M onthly Rent: t Date: | RIGHT: Lease End Date: Net Monthly Rent:",
-    "page": 1
+    "neighbor_text": "LEFT: Lease Star M arket M onthly Rent: t Date: | RIGHT: Lease End Date: Net Monthly Rent: | BELOW: Concessions:",
+    "page": 1,
+    "page_x_fraction": 0.42,
+    "page_y_fraction": 0.37
   },
   {
     "pdf_field": "Agent Signature",
     "field_type": "/Sig",
     "neighbor_text": "LEFT: Agent Signature: | ABOVE: Concessions: | RIGHT: Date:",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.48,
+    "page_y_fraction": 0.5
   },
   {
     "pdf_field": "Property Address",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Today\u2019s Date: Property Address: | ABOVE: Lease Abstract",
-    "page": 1
+    "neighbor_text": "LEFT: Property Address: | ABOVE: Lease Abstract | BELOW: City : :",
+    "page": 1,
+    "page_x_fraction": 0.59,
+    "page_y_fraction": 0.22
   },
   {
     "pdf_field": "Agent Signed Date",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: Date:",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.82,
+    "page_y_fraction": 0.5
   },
   {
     "pdf_field": "Unit No",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: Property Address: Unit No.: | ABOVE: Agent : | RIGHT: City : :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.37,
+    "page_y_fraction": 0.25
   },
   {
     "pdf_field": "Sales Managers Signature",
     "field_type": "/Sig",
-    "neighbor_text": "LEFT: Agent Signature: Sales Manager Signature | RIGHT: Date:",
-    "page": 1
+    "neighbor_text": "LEFT: Sales Manager Signature",
+    "page": 1,
+    "page_x_fraction": 0.53,
+    "page_y_fraction": 0.55
   },
   {
     "pdf_field": "Commission to Compass",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: M arket M onthly Rent: Commission to Compass: | ABOVE: Lease End Date: | RIGHT: Net Monthly Rent: Concessions:",
-    "page": 1
+    "neighbor_text": "LEFT: Commission to Compass: | ABOVE: Lease End Date: | RIGHT: Concessions:",
+    "page": 1,
+    "page_x_fraction": 0.42,
+    "page_y_fraction": 0.41
   },
   {
     "pdf_field": "Lease End Date.0.0",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: Lease End Date: | ABOVE: :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.33
   },
   {
     "pdf_field": "City",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: City : | ABOVE: Agent : | RIGHT: :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.62,
+    "page_y_fraction": 0.25
   },
   {
     "pdf_field": "State",
     "field_type": "/Tx",
     "neighbor_text": "LEFT: City : :",
-    "page": 1
+    "page": 1,
+    "page_x_fraction": 0.86,
+    "page_y_fraction": 0.25
   },
   {
     "pdf_field": "Sales Manager Signed Date",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Date:",
-    "page": 1
+    "neighbor_text": "",
+    "page": 1,
+    "page_x_fraction": 0.82,
+    "page_y_fraction": 0.55
   },
   {
     "pdf_field": "Text1",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Lease End Date: Net Monthly Rent:",
-    "page": 1
+    "neighbor_text": "LEFT: Net Monthly Rent:",
+    "page": 1,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.37
   },
   {
     "pdf_field": "Text2",
     "field_type": "/Tx",
-    "neighbor_text": "LEFT: Net Monthly Rent: Concessions:",
-    "page": 1
+    "neighbor_text": "LEFT: Concessions:",
+    "page": 1,
+    "page_x_fraction": 0.76,
+    "page_y_fraction": 0.41
   }
 ]

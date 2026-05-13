@@ -29,12 +29,29 @@ The accuracy bar drops on Multi-Board because:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# The shared conftest sets OPENAI_API_KEY=sk-test as a placeholder so unit
+# tests with mocked OpenAI don't error out at import time. Evals need the
+# REAL key, so override the placeholder from .env before the OpenAI client
+# is constructed. override=True is the load matters — without it the
+# setdefault('sk-test') from conftest wins and every eval hits OpenAI with
+# a fake key, returning auth errors that the test infrastructure can't
+# distinguish from a genuine mapping regression.
+load_dotenv(override=True)
+if not os.environ.get("OPENAI_API_KEY") or os.environ["OPENAI_API_KEY"] == "sk-test":
+    pytest.skip(
+        "Evals require a real OPENAI_API_KEY in .env (got placeholder). "
+        "Set the key and re-run with `pytest -m evals`.",
+        allow_module_level=True,
+    )
 
 from backend.pdf_render import collect_field_crops
-from backend.templates import propose_mapping, validate_pdf
+from backend.templates import propose_mapping_two_pass, validate_pdf
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -75,8 +92,12 @@ async def test_mapping_accuracy(template_name, pdf_filename, target_accuracy):
     # Render visual crops for empty-neighbor fields.
     crops = collect_field_crops(reader, field_descs)
 
-    # Run the real AI mapping.
-    proposal = await propose_mapping(field_descs, crops=crops)
+    # Run the real AI mapping via the two-pass orchestrator — measures
+    # what production actually runs (mini first pass over all fields,
+    # gpt-5 escalation on the uncertain subset). Earlier eval iterations
+    # called propose_mapping directly, but that bypassed the gating logic
+    # that affects which canonical paths land.
+    proposal = await propose_mapping_two_pass(field_descs, crops=crops)
 
     # Compare. We score:
     #   correct: canonical_path matches expected exactly
