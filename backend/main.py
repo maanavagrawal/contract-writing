@@ -62,6 +62,30 @@ ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT / "frontend"
 
 
+# Per-template asyncio locks for mapping-mutation endpoints. Two concurrent
+# PATCH requests against the same template (browser double-click, React strict
+# mode dev-mode double-fetch, or genuinely-parallel review sessions) would
+# otherwise pass independent ownership checks, load the same base mapping,
+# compute deltas off it, and last-write-wins — silently dropping the earlier
+# user's corrections. Lock at request granularity, keyed by template_id. The
+# lock object lifecycle is "created lazily on first use, lives forever" which
+# is fine for the working-set size (a single user has on the order of dozens
+# of templates, not millions). If memory pressure ever matters, swap to a
+# WeakValueDictionary keyed by template_id with a strong-ref set held by
+# currently-active waiters.
+_mapping_locks: dict[str, asyncio.Lock] = {}
+
+
+def _mapping_lock_for(template_id: str) -> asyncio.Lock:
+    """Get-or-create the per-template lock. Safe to call from anywhere in
+    the request thread because dict[].setdefault is atomic w.r.t. the GIL.
+    """
+    lock = _mapping_locks.get(template_id)
+    if lock is None:
+        lock = _mapping_locks.setdefault(template_id, asyncio.Lock())
+    return lock
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Run Postgres migrations on startup. Idempotent — safe to run every boot.
@@ -1115,118 +1139,139 @@ async def api_patch_template_mapping(
     needed), override to a canonical path or extra_field, or skip (leave
     blank). The frontend collects every correction and submits one PATCH.
 
-    Atomic on disk: we build the full new mapping in memory and write
-    once at the end. A bad canonical_path mid-batch rejects the whole
-    request — better than half-applying corrections and leaving the user
-    with an inconsistent mapping. The template's DB status drops to
-    "ready" when low_confidence is empty after the patch.
+    Atomic on disk + serialized per-template: the write path is
+    write-tmp-then-os.replace (atomic in the kernel) and the entire
+    load-mutate-write critical section is wrapped in an asyncio.Lock
+    keyed by template_id (no concurrent PATCHes on the same template
+    can interleave). A bad canonical_path mid-batch rejects the whole
+    request — better than half-applying corrections and leaving the
+    user with an inconsistent mapping.
+
+    Also syncs registered extras back to templates.extra_fields in the
+    DB so /api/extract's dynamic Pydantic schema actually carries the
+    new field — without this, {template_extras.X} references the user
+    just registered would always render blank.
     """
     if not req.corrections:
         raise HTTPException(400, "no corrections supplied")
 
-    # Ownership + existence check, same shape as the DELETE endpoint.
-    with get_conn() as conn:
-        existing = models.get_template(conn, template_id, user_id=user.id)
-        if existing is None:
-            raise HTTPException(404, f"template {template_id!r} not found")
-
-    # Load the mapping JSON via the same path the generate flow uses, so the
-    # validation pass that catches malformed JSON applies here too.
-    try:
-        mapping = generate_mod._load_mapping(template_id)
-    except generate_mod.UnknownDocument:
-        raise HTTPException(404, f"mapping for {template_id!r} not found on disk")
-    except generate_mod.InvalidMapping as e:
-        raise HTTPException(500, f"existing mapping is invalid: {e}")
-
-    # Index existing low_confidence so corrections can be matched + removed.
-    lc_by_field: dict[str, dict] = {
-        lc["pdf_field"]: lc for lc in (mapping.low_confidence or [])
-        if isinstance(lc, dict) and "pdf_field" in lc
-    }
-
-    # Re-shape existing extras (list[dict]) for upsert-by-name.
-    extras_by_name: dict[str, dict] = {
-        e.get("name"): e for e in (mapping.extra_fields or [])
-        if isinstance(e, dict) and e.get("name")
-    }
-
-    fields = dict(mapping.fields)
-    new_low_confidence: list[dict] = list(mapping.low_confidence or [])
-
-    # Validate every correction BEFORE mutating anything. We collect errors
-    # so the user sees all problems at once instead of fixing them one PATCH
-    # at a time.
-    errors: list[str] = []
-    for c in req.corrections:
-        if c.pdf_field not in fields:
-            errors.append(f"unknown pdf_field {c.pdf_field!r}")
-            continue
-        chose = sum(1 for x in (c.canonical_path, c.extra_field_name) if x) + (1 if c.skip else 0)
-        if chose != 1:
-            errors.append(
-                f"{c.pdf_field}: exactly one of canonical_path / extra_field_name / skip must be set"
-            )
-            continue
-        if c.canonical_path and c.canonical_path not in templates_mod._CANONICAL_PATH_ALLOWLIST:
-            errors.append(f"{c.pdf_field}: unknown canonical_path {c.canonical_path!r}")
-            continue
-        if c.extra_field_name:
-            ftype = (c.extra_field_type or "text").lower()
-            if ftype not in {"text", "money", "date", "number", "bool", "list_str"}:
-                errors.append(f"{c.pdf_field}: invalid extra_field_type {c.extra_field_type!r}")
-                continue
-    if errors:
-        raise HTTPException(400, {"errors": errors})
-
-    # Apply: rewrite fields[pdf_field], remove from low_confidence, upsert
-    # extras when needed.
-    for c in req.corrections:
-        if c.canonical_path:
-            fields[c.pdf_field] = "{" + c.canonical_path + "}"
-        elif c.extra_field_name:
-            fields[c.pdf_field] = "{template_extras." + c.extra_field_name + "}"
-            extras_by_name[c.extra_field_name] = {
-                "name": c.extra_field_name,
-                "type": (c.extra_field_type or "text").lower(),
-                "description": (c.extra_field_description or "").strip(),
-                "pdf_field": c.pdf_field,
-            }
-        else:  # skip
-            fields[c.pdf_field] = ""
-        new_low_confidence = [
-            lc for lc in new_low_confidence
-            if not (isinstance(lc, dict) and lc.get("pdf_field") == c.pdf_field)
-        ]
-
-    # Persist the updated mapping. Build a fresh MappingFile so Pydantic
-    # validates the new shape before we hit the disk.
-    from .schema import MappingFile, MappingMeta
-    new_mapping = MappingFile(
-        meta=MappingMeta(
-            title=mapping.meta.title,
-            source_pdf=mapping.meta.source_pdf,
-            filled_filename=mapping.meta.filled_filename,
-            notes=mapping.meta.notes,
-        ),
-        fields=fields,
-        extra_fields=list(extras_by_name.values()),
-        low_confidence=new_low_confidence,
-    )
-    templates_mod.write_mapping_file(new_mapping, template_id)
-
-    # Update DB row: clear needs_attention status when the banner is now empty.
-    new_status = "ready" if not new_low_confidence else existing.status
-    if new_status != existing.status:
+    async with _mapping_lock_for(template_id):
+        # Ownership + existence check, same shape as the DELETE endpoint.
         with get_conn() as conn:
-            models.update_template_status(conn, template_id, user_id=user.id, status=new_status)
+            existing = models.get_template(conn, template_id, user_id=user.id)
+            if existing is None:
+                raise HTTPException(404, f"template {template_id!r} not found")
 
-    return MappingCorrectionsResponse(
-        mapping=new_mapping.model_dump(by_alias=True),
-        extra_fields=list(extras_by_name.values()),
-        low_confidence_remaining=len(new_low_confidence),
-        status=new_status,
-    )
+        # Load the mapping JSON via the same path the generate flow uses, so the
+        # validation pass that catches malformed JSON applies here too.
+        try:
+            mapping = generate_mod._load_mapping(template_id)
+        except generate_mod.UnknownDocument:
+            raise HTTPException(404, f"mapping for {template_id!r} not found on disk")
+        except generate_mod.InvalidMapping as e:
+            raise HTTPException(500, f"existing mapping is invalid: {e}")
+
+        # Re-shape existing extras (list[dict]) for upsert-by-name.
+        extras_by_name: dict[str, dict] = {
+            e.get("name"): e for e in (mapping.extra_fields or [])
+            if isinstance(e, dict) and e.get("name")
+        }
+
+        fields = dict(mapping.fields)
+        new_low_confidence: list[dict] = list(mapping.low_confidence or [])
+
+        # Validate every correction BEFORE mutating anything. We collect errors
+        # so the user sees all problems at once instead of fixing them one PATCH
+        # at a time. Error detail is a flat string ("- a\n- b") so the
+        # frontend's res.text() surfaces something readable instead of nested
+        # JSON the user has to mentally parse.
+        errors: list[str] = []
+        for c in req.corrections:
+            if c.pdf_field not in fields:
+                errors.append(f"unknown pdf_field {c.pdf_field!r}")
+                continue
+            chose = sum(1 for x in (c.canonical_path, c.extra_field_name) if x) + (1 if c.skip else 0)
+            if chose != 1:
+                errors.append(
+                    f"{c.pdf_field}: exactly one of canonical_path / extra_field_name / skip must be set"
+                )
+                continue
+            if c.canonical_path and c.canonical_path not in templates_mod._CANONICAL_PATH_ALLOWLIST:
+                errors.append(f"{c.pdf_field}: unknown canonical_path {c.canonical_path!r}")
+                continue
+            if c.extra_field_name:
+                ftype = (c.extra_field_type or "text").lower()
+                if ftype not in {"text", "money", "date", "number", "bool", "list_str"}:
+                    errors.append(f"{c.pdf_field}: invalid extra_field_type {c.extra_field_type!r}")
+                    continue
+        if errors:
+            raise HTTPException(400, "corrections rejected:\n- " + "\n- ".join(errors))
+
+        # Apply: rewrite fields[pdf_field], remove from low_confidence, upsert
+        # extras when needed.
+        for c in req.corrections:
+            if c.canonical_path:
+                fields[c.pdf_field] = "{" + c.canonical_path + "}"
+            elif c.extra_field_name:
+                fields[c.pdf_field] = "{template_extras." + c.extra_field_name + "}"
+                extras_by_name[c.extra_field_name] = {
+                    "name": c.extra_field_name,
+                    "type": (c.extra_field_type or "text").lower(),
+                    "description": (c.extra_field_description or "").strip(),
+                    "pdf_field": c.pdf_field,
+                }
+            else:  # skip
+                fields[c.pdf_field] = ""
+            new_low_confidence = [
+                lc for lc in new_low_confidence
+                if not (isinstance(lc, dict) and lc.get("pdf_field") == c.pdf_field)
+            ]
+
+        # Persist the updated mapping. Build a fresh MappingFile so Pydantic
+        # validates the new shape before we hit the disk.
+        from .schema import MappingFile, MappingMeta
+        new_mapping = MappingFile(
+            meta=MappingMeta(
+                title=mapping.meta.title,
+                source_pdf=mapping.meta.source_pdf,
+                filled_filename=mapping.meta.filled_filename,
+                notes=mapping.meta.notes,
+            ),
+            fields=fields,
+            extra_fields=list(extras_by_name.values()),
+            low_confidence=new_low_confidence,
+        )
+        templates_mod.write_mapping_file(new_mapping, template_id)
+
+        # Sync DB row: update extra_fields so /api/extract's dynamic schema
+        # build sees the new template_extras names, and flip status to
+        # "ready" when the banner is now empty.
+        from .models import ExtraField as ExtraFieldModel
+        db_extras = [
+            ExtraFieldModel(
+                name=e["name"],
+                type=e.get("type", "text"),
+                description=e.get("description", ""),
+                pdf_field=e.get("pdf_field", ""),
+            )
+            for e in extras_by_name.values()
+        ]
+        new_status = "ready" if not new_low_confidence else existing.status
+        with get_conn() as conn:
+            models.update_template_extra_fields(
+                conn, template_id, user_id=user.id, extras=db_extras,
+            )
+            if new_status != existing.status:
+                models.update_template_status(
+                    conn, template_id, user_id=user.id, status=new_status,
+                )
+
+        return MappingCorrectionsResponse(
+            mapping=new_mapping.model_dump(by_alias=True),
+            extra_fields=list(extras_by_name.values()),
+            low_confidence_remaining=len(new_low_confidence),
+            status=new_status,
+        )
 
 
 @app.delete("/api/templates/{template_id}", status_code=204)

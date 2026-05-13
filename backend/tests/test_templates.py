@@ -1315,7 +1315,14 @@ def test_patch_mapping_extra_field_correction_registers_extra(
 ):
     """Override path: user wants a template-specific extra. The mapping
     rewrites to {template_extras.<name>} and the extra is added to
-    extra_fields so future extracts include it in the dynamic schema."""
+    extra_fields so future extracts include it in the dynamic schema.
+
+    REGRESSION (code review 2026-05-12): the PATCH endpoint originally
+    only wrote the mapping JSON. The templates.extra_fields DB column —
+    which /api/extract reads when building the dynamic Pydantic schema —
+    was never updated. The {template_extras.X} reference would then
+    always render blank at fill time. Assert both writes here so the
+    bug can't regress."""
     template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
 
     r = authed_client.patch(
@@ -1335,6 +1342,135 @@ def test_patch_mapping_extra_field_correction_registers_extra(
     extras = {e["name"]: e for e in body["extra_fields"]}
     assert "delivery_address" in extras
     assert extras["delivery_address"]["type"] == "text"
+
+    # Cross-check: read the DB row directly (the templates list endpoint
+    # only exposes the COUNT of extras; the propagation we care about is
+    # the actual NAMES landing in the templates.extra_fields column so
+    # the dynamic schema build in /api/extract can see them).
+    user_id = authed_client.get("/api/auth/me").json()["id"]
+    from backend.db import get_conn
+    from backend import models
+    with get_conn() as conn:
+        tpl = models.get_template(conn, template_id, user_id=user_id)
+    assert tpl is not None
+    db_extras_by_name = {e.name: e for e in tpl.extra_fields}
+    assert "delivery_address" in db_extras_by_name, \
+        "extra registered via PATCH must appear in templates.extra_fields DB column"
+    assert db_extras_by_name["delivery_address"].type == "text"
+    assert db_extras_by_name["delivery_address"].description == "Where invoices ship"
+
+
+def test_patch_mapping_extra_field_propagates_to_extract_schema(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """REGRESSION (code review 2026-05-12 C1): the user registers an
+    extra via PATCH, then runs /api/extract with that template active.
+    The dynamic Pydantic schema must include the new extra's name so
+    the AI sees a slot to fill and the {template_extras.X} reference
+    isn't dead at generate time."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    # Register a new extra via PATCH.
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {
+                "pdf_field": "PROPERTY ADDRESS",
+                "extra_field_name": "delivery_address",
+                "extra_field_type": "text",
+                "extra_field_description": "Where invoices ship",
+            },
+        ]},
+    )
+    assert r.status_code == 200, r.text
+
+    # Now spy on what /api/extract receives. The dynamic-schema build
+    # consumes the templates DB row's extra_fields list — if PATCH
+    # didn't write to the DB, this dict would be empty for our template.
+    captured = {}
+
+    async def fake_extract(notes, images=None, template_extras=None, tier="full"):
+        captured["template_extras"] = template_extras
+        from backend.schema import TransactionFields
+        return TransactionFields()
+
+    from backend import main
+    monkeypatch.setattr(main, "extract_fields", fake_extract)
+
+    r = authed_client.post(
+        "/api/extract",
+        data={"notes": "test", "active_template_ids": template_id},
+    )
+    assert r.status_code == 200, r.text
+    extras_for_tpl = captured["template_extras"].get(template_id) or []
+    extra_names = {e.name for e in extras_for_tpl}
+    assert "delivery_address" in extra_names, \
+        "extract_fields should see the PATCH-registered extra in its dynamic schema"
+
+
+def test_patch_mapping_concurrent_writes_do_not_drop_corrections(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """REGRESSION (code review 2026-05-12 C2): two PATCH requests on
+    the same template fired concurrently (browser double-click, React
+    strict-mode double-fetch) used to race: both loaded the same base
+    mapping, both wrote their delta, last-write-wins silently dropped
+    the earlier corrections. The per-template asyncio.Lock serializes
+    them so both corrections land.
+
+    The TestClient's transport is synchronous so we can't fire two
+    PATCHes mid-flight in a single test, but we can spy on the
+    mapping-write path to confirm the lock is held while the second
+    request would otherwise race in. Simplest functional check: fire
+    two sequential PATCHes against DIFFERENT pdf_fields and assert
+    BOTH corrections survive (neither write nukes the other's delta)."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    # First PATCH: route PROPERTY ADDRESS to canonical.
+    r1 = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "PROPERTY ADDRESS", "canonical_path": "property.address"},
+        ]},
+    )
+    assert r1.status_code == 200, r1.text
+    # Second PATCH: skip a DIFFERENT field. The on-disk mapping must
+    # carry BOTH the canonical from PATCH 1 and the skip from PATCH 2.
+    r2 = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "TENANTS NAME", "skip": True},
+        ]},
+    )
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+    assert body["mapping"]["fields"]["PROPERTY ADDRESS"] == "{property.address}", \
+        "first PATCH's correction must survive the second PATCH"
+    assert body["mapping"]["fields"]["TENANTS NAME"] == "", \
+        "second PATCH's correction must apply"
+
+
+def test_patch_mapping_validation_error_returns_readable_string(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """REGRESSION (code review 2026-05-12 I2): HTTPException detail was
+    originally a dict {"errors": [...]}, which FastAPI serialized as
+    {"detail": {"errors": [...]}}. The frontend's res.text() then showed
+    raw nested JSON to the user. Detail is now a plain string with one
+    correction per line — readable in any context."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "PROPERTY ADDRESS", "canonical_path": "totally_made_up"},
+            {"pdf_field": "NOT A REAL FIELD", "skip": True},
+        ]},
+    )
+    assert r.status_code == 400, r.text
+    detail = r.json().get("detail")
+    assert isinstance(detail, str), f"detail must be a string, got {type(detail).__name__}: {detail!r}"
+    assert "totally_made_up" in detail
+    assert "NOT A REAL FIELD" in detail
 
 
 def test_patch_mapping_skip_blanks_the_field(

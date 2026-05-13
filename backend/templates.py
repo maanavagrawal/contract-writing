@@ -873,7 +873,6 @@ async def propose_mapping_two_pass(
     # Build the subset that needs a second look.
     allowlist = _CANONICAL_PATH_ALLOWLIST
     by_field: dict[str, ProposedField] = {f.pdf_field: f for f in pass1.fields}
-    desc_by_field: dict[str, dict] = {fd.get("pdf_field"): fd for fd in field_descriptions if fd.get("pdf_field")}
     pass2_descs: list[dict] = []
     for fd in field_descriptions:
         name = fd.get("pdf_field")
@@ -1577,11 +1576,32 @@ def validate_mapping_structure(
 
 
 def write_mapping_file(mapping: MappingFile, template_id: str) -> Path:
-    """Serialize the MappingFile to backend/mappings/<id>.json. Aliased '_meta'
-    is preserved by Pydantic when we call model_dump(by_alias=True)."""
+    """Serialize the MappingFile to backend/mappings/<id>.json atomically.
+
+    Write to a sibling .tmp file then os.replace() onto the target so a
+    crash (Ctrl-C, SIGKILL, disk full mid-write) leaves either the old
+    file intact or the new file complete — never a half-written JSON
+    that breaks every subsequent /generate. os.replace is atomic on
+    POSIX (rename(2)) and Windows (since Python 3.3).
+
+    Aliased '_meta' is preserved by Pydantic when we call
+    model_dump(by_alias=True).
+    """
+    import os
     MAPPINGS_DIR.mkdir(parents=True, exist_ok=True)
     target = MAPPINGS_DIR / f"{template_id}.json"
-    target.write_text(json.dumps(mapping.model_dump(by_alias=True), indent=2))
+    tmp = MAPPINGS_DIR / f".{template_id}.json.tmp"
+    payload = json.dumps(mapping.model_dump(by_alias=True), indent=2)
+    tmp.write_text(payload)
+    try:
+        os.replace(tmp, target)
+    except OSError:
+        # Replace failed — clean up the tmp so we don't leave debris.
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
     return target
 
 

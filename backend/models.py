@@ -204,6 +204,29 @@ def update_template_title(
     return cur.rowcount
 
 
+def update_template_extra_fields(
+    conn: psycopg.Connection,
+    tpl_id: str,
+    user_id: str,
+    extras: list[ExtraField],
+) -> int:
+    """Replace the extra_fields list for a template. Used by the PATCH
+    /api/templates/<id>/mapping endpoint when the user registers a new
+    template-specific field via the low-confidence review UI. Without
+    this DB write, the mapping JSON's extra_fields would diverge from
+    the templates.extra_fields column — /api/extract reads from the DB
+    when building the dynamic Pydantic schema, so an extra that lives
+    only in the JSON never reaches the AI and the corresponding
+    {template_extras.X} reference would always render blank.
+
+    Returns rowcount so the caller can detect missing/cross-user rows."""
+    cur = conn.execute(
+        "UPDATE templates SET extra_fields = %s WHERE id = %s AND user_id = %s",
+        (json.dumps([e.model_dump() for e in extras]), tpl_id, user_id),
+    )
+    return cur.rowcount
+
+
 def update_template_status(
     conn: psycopg.Connection,
     tpl_id: str,
