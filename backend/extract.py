@@ -211,7 +211,22 @@ async def extract_fields(
             })
 
     schema_model = build_dynamic_extraction_model(template_extras or {})
-    model_id = MODEL_LIVE if tier == "live" else MODEL_FULL
+
+    # Model selection:
+    #   - tier="live": always mini (no images, debounced path).
+    #   - tier="full" without images: mini too. The user-reported 80s extraction
+    #     on a notes-only paste was gpt-5; mini handles structured extraction
+    #     from plain text with effectively the same quality at 3-4× speed.
+    #   - tier="full" with images: gpt-5 stays. MLS screenshots need the
+    #     stronger vision model; mini's vision is weaker and we'd see address
+    #     / price extraction regress.
+    has_images = bool(images) and tier != "live"
+    if tier == "live":
+        model_id = MODEL_LIVE
+    elif has_images:
+        model_id = MODEL_FULL
+    else:
+        model_id = MODEL_LIVE
 
     # reasoning_effort="low" — same rationale as templates._propose_mapping_chunk.
     # This is structured extraction with a Pydantic schema; the model is

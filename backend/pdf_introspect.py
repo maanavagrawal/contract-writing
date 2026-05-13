@@ -28,6 +28,15 @@ from pypdf.generic import IndirectObject
 # out of scope — no leak across requests.
 _walk_cache: "weakref.WeakKeyDictionary[PdfReader, list[FieldInfo]]" = weakref.WeakKeyDictionary()
 
+# Per-(reader, page) cache of text positions. extract_neighbor_text is called
+# once per field — on the synthesized CAR PDF that's 185 calls across 14 pages,
+# each one re-parsing the full page content stream via pypdf's
+# page.extract_text(visitor_text=...). Measured 3.4s wasted per upload.
+# Caching the (x, y, text) tuples per page collapses that to ~14 extractions
+# (one per unique page touched) and lets the band-math filter the cached list.
+# WeakKeyDictionary on PdfReader so it evicts with the reader.
+_text_positions_cache: "weakref.WeakKeyDictionary[PdfReader, dict[int, list[tuple[float, float, str]]]]" = weakref.WeakKeyDictionary()
+
 
 @dataclass
 class WidgetInfo:
@@ -282,6 +291,53 @@ def invalidate_walk_cache(reader: PdfReader) -> None:
     new bytes and the original reader becomes stale anyway. Cheap safety
     net: a stale cache return would silently miss synthesized fields."""
     _walk_cache.pop(reader, None)
+    _text_positions_cache.pop(reader, None)
+
+
+def _page_text_positions(
+    reader: PdfReader, page_num: int
+) -> list[tuple[float, float, str]]:
+    """Extract every text fragment's (x, y, stripped_text) on page page_num
+    (1-based), memoized per (reader, page).
+
+    pypdf's page.extract_text(visitor_text=...) walks the page content
+    stream once per call. Without this cache, extract_neighbor_text re-walks
+    the same page N times (once per field on that page). On the 14-page
+    CAR PDF with 185 synth fields, page 1 was being re-parsed 54 times.
+    """
+    cache = _text_positions_cache.get(reader)
+    if cache is None:
+        cache = {}
+        _text_positions_cache[reader] = cache
+    cached = cache.get(page_num)
+    if cached is not None:
+        return cached
+
+    if page_num < 1 or page_num > len(reader.pages):
+        cache[page_num] = []
+        return cache[page_num]
+
+    page = reader.pages[page_num - 1]
+    positions: list[tuple[float, float, str]] = []
+
+    def visitor(text: str, cm, tm, font_dict, font_size) -> None:
+        try:
+            x = float(tm[4])
+            y = float(tm[5])
+        except (TypeError, IndexError, ValueError):
+            return
+        stripped = text.strip()
+        if not stripped or _is_line_number_noise(stripped):
+            return
+        positions.append((x, y, stripped))
+
+    try:
+        page.extract_text(visitor_text=visitor)
+    except Exception:
+        pass  # leave positions empty; caller treats it as "no neighbor text"
+
+    cache[page_num] = positions
+    return positions
 
 
 _LINE_NUM_RX = re.compile(r"^\s*\d{1,3}\s*$")
@@ -327,7 +383,6 @@ def extract_neighbor_text(
     _ = radius  # kept for backwards-compat, no longer used
     if page_num < 1 or page_num > len(reader.pages):
         return ""
-    page = reader.pages[page_num - 1]
 
     # Some PDFs store widget rects with reversed y (lly > ury). Normalize so
     # all our band math assumes the canonical (llx,lly) = bottom-left,
@@ -372,16 +427,9 @@ def extract_neighbor_text(
     right_pieces: list[tuple[float, str]] = []
     below_pieces: list[tuple[float, float, str]] = []
 
-    def visitor(text: str, cm, tm, font_dict, font_size) -> None:
-        try:
-            x = float(tm[4])
-            y = float(tm[5])
-        except (TypeError, IndexError, ValueError):
-            return
-        stripped = text.strip()
-        if not stripped or _is_line_number_noise(stripped):
-            return
-
+    # _page_text_positions already filters _is_line_number_noise and empty
+    # strings at cache-build time, so the loop below just does band math.
+    for x, y, stripped in _page_text_positions(reader, page_num):
         if same_line_bot <= y <= same_line_top:
             # Left of the rect, within ~3 inches.
             if x < llx and x > llx - 220:
@@ -402,11 +450,6 @@ def extract_neighbor_text(
             # field. Tighter than ABOVE wouldn't survive 1-2pt of design drift.
             if (llx - 60) <= x <= (urx + 60):
                 below_pieces.append((y, x, stripped))
-
-    try:
-        page.extract_text(visitor_text=visitor)
-    except Exception:
-        return ""
 
     left_text = " ".join(t for _, t in sorted(left_pieces, key=lambda p: p[0]))[-180:]
     above_text = " ".join(t for _, _, t in sorted(above_pieces, key=lambda p: (-p[0], p[1])))[-180:]
