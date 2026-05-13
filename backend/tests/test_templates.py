@@ -309,6 +309,136 @@ def test_ai_invented_extras_get_coerced_to_canonical():
     assert mapping.fields["D"] == "{template_extras.pet_name}"
 
 
+def test_count_rule_does_not_false_match_account_or_discount():
+    """REGRESSION (security review 2026-05-12): the county-coercion rule
+    originally matched any name containing 'count', which would incorrectly
+    rewrite 'account_number', 'discount_percent', 'encounter_id' to county.
+    The tightened rule requires both 'count' AND 'y' as substrings — every
+    real county variation has both ('county', 'counties'); these false-match
+    examples have only 'count'."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="A", extra_field_name="account_number",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+        ProposedField(pdf_field="B", extra_field_name="discount_percent",
+                      extra_field_type="money", extra_field_description="x", confidence=9),
+        ProposedField(pdf_field="C", extra_field_name="encounter_id",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+        # Real county should still match.
+        ProposedField(pdf_field="D", extra_field_name="primary_county",
+                      extra_field_type="text", extra_field_description="x", confidence=9),
+    ])
+    mapping, _extras, _unknown, _low, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    # None of the false-match examples coerce to county.
+    assert mapping.fields["A"] == "{template_extras.account_number}"
+    assert mapping.fields["B"] == "{template_extras.discount_percent}"
+    assert mapping.fields["C"] == "{template_extras.encounter_id}"
+    # But a real county still does.
+    assert mapping.fields["D"] == "{county}"
+
+
+# ============================================================================
+# Two-pass mapping orchestration (mini for breadth, gpt-5 for hard subset)
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_propose_mapping_two_pass_escalates_only_uncertain_fields(monkeypatch):
+    """REGRESSION (architecture review 2026-05-12): two-pass should run mini
+    over EVERY field, then gpt-5 only over fields where mini was uncertain
+    (low confidence) or invented a template_extras path that resolves to a
+    real canonical concept. Confident-canonical fields skip pass 2."""
+    descs = [
+        {"pdf_field": "F1", "field_type": "/Tx", "neighbor_text": "Buyer", "page": 1},
+        {"pdf_field": "F2", "field_type": "/Tx", "neighbor_text": "Date", "page": 1},
+        {"pdf_field": "F3", "field_type": "/Tx", "neighbor_text": "Address", "page": 1},
+    ]
+
+    # Pass 1 (mini) confidently maps F1 + F2, hedges on F3.
+    pass1 = ProposedMapping(fields=[
+        ProposedField(pdf_field="F1", canonical_path="tenant_or_buyer_names", confidence=10),
+        ProposedField(pdf_field="F2", canonical_path="today", confidence=9),
+        ProposedField(pdf_field="F3", canonical_path="property.address", confidence=5),
+    ])
+    # Pass 2 (gpt-5) only sees F3 and bumps confidence + corrects.
+    pass2 = ProposedMapping(fields=[
+        ProposedField(pdf_field="F3", canonical_path="property.address", confidence=10),
+    ])
+
+    calls: list[tuple[str | None, list[str]]] = []
+
+    async def fake_propose(descs_in, crops=None, model=None):
+        names = [d["pdf_field"] for d in descs_in]
+        calls.append((model, names))
+        # Return whichever proposal matches the field set.
+        if set(names) == {"F1", "F2", "F3"}:
+            return pass1
+        if set(names) == {"F3"}:
+            return pass2
+        raise AssertionError(f"unexpected propose_mapping call: {names}")
+
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    result = await templates_mod.propose_mapping_two_pass(descs)
+    # Pass 1 received all 3; pass 2 received only F3.
+    assert len(calls) == 2
+    assert calls[0][1] == ["F1", "F2", "F3"]
+    assert calls[0][0] == templates_mod.MODEL_FAST
+    assert calls[1][1] == ["F3"]
+    # Pass 2 model is the default MODEL (gpt-5), passed as None or explicit.
+    # Merged result preserves positional order and uses pass 2's F3.
+    assert [f.pdf_field for f in result.fields] == ["F1", "F2", "F3"]
+    f3 = next(f for f in result.fields if f.pdf_field == "F3")
+    assert f3.confidence == 10  # pass 2's value wins
+
+
+@pytest.mark.asyncio
+async def test_propose_mapping_two_pass_skips_pass2_when_mini_confident(monkeypatch):
+    """Lucky path: every field is confidently mapped by mini, no pass 2 fires.
+    Wall time drops to mini-only — the design partner's reward for a clean form."""
+    descs = [
+        {"pdf_field": "F1", "field_type": "/Tx", "neighbor_text": "Buyer", "page": 1},
+    ]
+    pass1 = ProposedMapping(fields=[
+        ProposedField(pdf_field="F1", canonical_path="tenant_or_buyer_names", confidence=10),
+    ])
+    call_count = {"n": 0}
+
+    async def fake_propose(_descs, crops=None, model=None):
+        call_count["n"] += 1
+        return pass1
+
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+    result = await templates_mod.propose_mapping_two_pass(descs)
+    assert call_count["n"] == 1, "pass 2 should not fire when mini is confident"
+    assert result.fields[0].canonical_path == "tenant_or_buyer_names"
+
+
+@pytest.mark.asyncio
+async def test_propose_mapping_two_pass_falls_back_when_pass2_fails(monkeypatch):
+    """Pass 2 (gpt-5) raising AIMappingError must NOT fail the upload —
+    degrade to pass 1's results instead. Upload is more valuable than perfect
+    accuracy: the user can correct mini's mistakes via the review UI."""
+    descs = [
+        {"pdf_field": "F1", "field_type": "/Tx", "neighbor_text": "Mystery", "page": 1},
+    ]
+    pass1 = ProposedMapping(fields=[
+        ProposedField(pdf_field="F1", canonical_path=None, extra_field_name="mystery",
+                      extra_field_type="text", extra_field_description="x", confidence=4),
+    ])
+
+    async def fake_propose(_descs, crops=None, model=None):
+        if model == templates_mod.MODEL_FAST:
+            return pass1
+        raise templates_mod.AIMappingError("simulated gpt-5 outage")
+
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+    result = await templates_mod.propose_mapping_two_pass(descs)
+    # Pass 1's proposal is preserved, even though it was low confidence.
+    assert result.fields[0].pdf_field == "F1"
+    assert result.fields[0].extra_field_name == "mystery"
+
+
 # ============================================================================
 # Neighbor-text extraction (the AI's primary signal for label inference)
 # ============================================================================
@@ -854,7 +984,7 @@ def test_upload_template_happy_path(authed_client, isolated_template_dirs, monke
                       confidence=10),
     ])
 
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         return fake_proposal
     monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
 
@@ -895,14 +1025,17 @@ def test_reupload_same_pdf_updates_title_via_cache(authed_client, isolated_templ
     ])
     call_count = {"n": 0}
 
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         call_count["n"] += 1
         return fake_proposal
     monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
 
     pdf_bytes = LEASE_INVOICE_PDF.read_bytes()
 
-    # First upload: AI mapping runs (call_count goes to 1).
+    # First upload: AI mapping runs. The two-pass orchestrator may invoke
+    # propose_mapping more than once (pass 1 mini + pass 2 gpt-5 on the
+    # low-confidence subset) — what matters for THIS test is that the
+    # SECOND upload (same bytes) skips the AI entirely via the SHA cache.
     r = authed_client.post(
         "/api/templates/upload",
         data={"title": "Original Title"},
@@ -910,7 +1043,8 @@ def test_reupload_same_pdf_updates_title_via_cache(authed_client, isolated_templ
     )
     assert r.status_code == 200
     assert r.json()["title"] == "Original Title"
-    assert call_count["n"] == 1
+    assert call_count["n"] >= 1, "First upload should call the AI at least once"
+    first_upload_calls = call_count["n"]
     template_id = r.json()["id"]
 
     # Second upload, same PDF bytes, NEW title. Cache hit: AI must NOT be
@@ -921,7 +1055,7 @@ def test_reupload_same_pdf_updates_title_via_cache(authed_client, isolated_templ
         files={"pdf": ("a.pdf", pdf_bytes, "application/pdf")},
     )
     assert r.status_code == 200, r.text
-    assert call_count["n"] == 1, "Cache should have prevented a second AI call"
+    assert call_count["n"] == first_upload_calls, "Cache should have prevented further AI calls"
     assert r.json()["title"] == "New Title", "Cache hit must honor user's new title"
     assert r.json()["id"] == template_id, "Cache hit returns the same row"
 
@@ -958,7 +1092,7 @@ def test_delete_unknown_template_is_404(authed_client, isolated_template_dirs):
 def test_delete_custom_template_round_trip(authed_client, isolated_template_dirs, monkeypatch):
     """Upload a template, delete it, verify it's gone from the list AND the
     files are cleaned up."""
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         return ProposedMapping(fields=[
             ProposedField(pdf_field="TENANTS NAME", canonical_path="tenant_or_buyer_names", confidence=10),
             ProposedField(pdf_field="PROPERTY ADDRESS", canonical_path="property.address", confidence=10),
@@ -998,7 +1132,7 @@ def test_delete_custom_template_round_trip(authed_client, isolated_template_dirs
 def test_upload_ai_failure_cleans_up_pdf(authed_client, isolated_template_dirs, monkeypatch):
     """If GPT errors after we've saved the PDF, we should not leave an
     orphan file on disk."""
-    async def fake_propose_fails(_descs, crops=None):
+    async def fake_propose_fails(_descs, crops=None, **_kwargs):
         raise templates_mod.AIMappingError("simulated API outage")
     monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose_fails)
 
@@ -1034,7 +1168,7 @@ def test_anonymous_request_is_401(clean_db):
 def test_user_b_cannot_see_user_a_templates(two_authed_clients, isolated_template_dirs, monkeypatch):
     """The privacy boundary. Alice uploads → Bob's list stays empty."""
     alice, bob = two_authed_clients
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         return ProposedMapping(fields=[
             ProposedField(pdf_field="TENANTS NAME", canonical_path="tenant_or_buyer_names", confidence=10),
         ])
@@ -1057,7 +1191,7 @@ def test_user_b_delete_on_user_a_template_is_404_idor_safe(two_authed_clients, i
     error msg) and tries every endpoint. All return 404 — never 403, which
     would confirm 'this id exists, you just can't touch it'."""
     alice, bob = two_authed_clients
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         return ProposedMapping(fields=[
             ProposedField(pdf_field="X", canonical_path="property.address", confidence=10),
         ])
@@ -1085,7 +1219,7 @@ def test_extract_only_resolves_caller_template_extras(two_authed_clients, isolat
     """Active_template_ids that belong to another user are silently ignored
     rather than activating their extras for the caller."""
     alice, bob = two_authed_clients
-    async def fake_propose(_descs, crops=None):
+    async def fake_propose(_descs, crops=None, **_kwargs):
         return ProposedMapping(fields=[
             ProposedField(pdf_field="X", extra_field_name="alice_secret",
                           extra_field_type="text", extra_field_description="x",
@@ -1119,3 +1253,169 @@ def test_extract_only_resolves_caller_template_extras(two_authed_clients, isolat
     assert r.status_code == 200
     # Bob's extract dropped the cross-user id silently.
     assert captured["template_extras"] == {}
+
+
+# ============================================================================
+# PATCH /api/templates/{id}/mapping — low-confidence review UI backend
+# ============================================================================
+
+def _upload_with_low_confidence(authed_client, monkeypatch):
+    """Helper: upload a template whose mapping has one low-confidence entry
+    so the PATCH tests have something to correct. Returns (template_id,
+    mapping_dict)."""
+    # Two fields. One canonical (high confidence), one low-conf extra (will
+    # land in low_confidence and the banner).
+    fake_proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="TENANTS NAME", canonical_path="tenant_or_buyer_names",
+                      confidence=10),
+        ProposedField(pdf_field="PROPERTY ADDRESS", extra_field_name="mystery_address",
+                      extra_field_type="text", extra_field_description="x",
+                      confidence=3),  # below threshold → low_confidence
+    ])
+
+    async def fake_propose(_descs, crops=None, **_kwargs):
+        return fake_proposal
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    r = authed_client.post(
+        "/api/templates/upload",
+        data={"title": "PATCH test"},
+        files={"pdf": ("a.pdf", LEASE_INVOICE_PDF.read_bytes(), "application/pdf")},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    return data["id"], data
+
+
+def test_patch_mapping_canonical_correction_clears_low_confidence(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """Happy path: user accepts a canonical override for the AI's uncertain
+    field. The mapping rewrites to {<path>}, the entry leaves
+    low_confidence, and if no entries remain the template flips to ready."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "PROPERTY ADDRESS", "canonical_path": "property.address"},
+        ]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "ready"
+    assert body["low_confidence_remaining"] == 0
+    assert body["mapping"]["fields"]["PROPERTY ADDRESS"] == "{property.address}"
+    # The OTHER field (already canonical) is unchanged.
+    assert body["mapping"]["fields"]["TENANTS NAME"] == "{tenant_or_buyer_names}"
+
+
+def test_patch_mapping_extra_field_correction_registers_extra(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """Override path: user wants a template-specific extra. The mapping
+    rewrites to {template_extras.<name>} and the extra is added to
+    extra_fields so future extracts include it in the dynamic schema."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {
+                "pdf_field": "PROPERTY ADDRESS",
+                "extra_field_name": "delivery_address",
+                "extra_field_type": "text",
+                "extra_field_description": "Where invoices ship",
+            },
+        ]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mapping"]["fields"]["PROPERTY ADDRESS"] == "{template_extras.delivery_address}"
+    extras = {e["name"]: e for e in body["extra_fields"]}
+    assert "delivery_address" in extras
+    assert extras["delivery_address"]["type"] == "text"
+
+
+def test_patch_mapping_skip_blanks_the_field(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """Skip path: user says this is hand-fill. The field's mapping becomes
+    "" (blank at fill time) and the low_confidence entry is removed."""
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "PROPERTY ADDRESS", "skip": True},
+        ]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mapping"]["fields"]["PROPERTY ADDRESS"] == ""
+    assert body["low_confidence_remaining"] == 0
+
+
+def test_patch_mapping_rejects_unknown_canonical_path(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    """Hallucinated paths cause a 400 and the on-disk mapping is unchanged.
+    Atomicity: nothing partial gets written if any correction is invalid."""
+    template_id, original = _upload_with_low_confidence(authed_client, monkeypatch)
+
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "PROPERTY ADDRESS", "canonical_path": "totally_made_up"},
+        ]},
+    )
+    assert r.status_code == 400, r.text
+
+    # Re-read via the listing: mapping is unchanged.
+    listing = authed_client.get("/api/templates").json()
+    tpl = next(t for t in listing["templates"] if t["id"] == template_id)
+    assert tpl["status"] == "needs_attention"  # unchanged
+
+
+def test_patch_mapping_rejects_unknown_pdf_field(
+    authed_client, isolated_template_dirs, monkeypatch
+):
+    template_id, _ = _upload_with_low_confidence(authed_client, monkeypatch)
+    r = authed_client.patch(
+        f"/api/templates/{template_id}/mapping",
+        json={"corrections": [
+            {"pdf_field": "NOT A REAL FIELD", "skip": True},
+        ]},
+    )
+    assert r.status_code == 400, r.text
+
+
+def test_patch_mapping_cross_user_returns_404(
+    two_authed_clients, isolated_template_dirs, monkeypatch
+):
+    """User B PATCHing user A's template returns 404 (not 403) so attackers
+    can't enumerate other users' template ids."""
+    alice, bob = two_authed_clients
+
+    fake_proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="TENANTS NAME", extra_field_name="x",
+                      extra_field_type="text", extra_field_description="x",
+                      confidence=3),
+    ])
+    async def fake_propose(_descs, crops=None, **_kwargs):
+        return fake_proposal
+    monkeypatch.setattr(templates_mod, "propose_mapping", fake_propose)
+
+    r = alice.post(
+        "/api/templates/upload",
+        data={"title": "alices template"},
+        files={"pdf": ("a.pdf", LEASE_INVOICE_PDF.read_bytes(), "application/pdf")},
+    )
+    assert r.status_code == 200
+    alice_template_id = r.json()["id"]
+
+    r = bob.patch(
+        f"/api/templates/{alice_template_id}/mapping",
+        json={"corrections": [{"pdf_field": "TENANTS NAME", "skip": True}]},
+    )
+    assert r.status_code == 404, r.text

@@ -182,6 +182,41 @@ class UncertainField(BaseModel):
     kind: str                   # "canonical" | "extra"
 
 
+class MappingCorrection(BaseModel):
+    """One user-supplied correction for a low-confidence mapping entry.
+
+    Exactly one of canonical_path / extra_field_name / skip must be set:
+      - canonical_path: route this field to a TransactionFields or agent.*
+        path. Validated against the allowlist server-side.
+      - extra_field_name: register a template-specific extra. Future
+        extracts will include this name in the dynamic schema, and the
+        mapping will reference {template_extras.<name>}.
+      - skip=True: leave the field blank (handfill at signing time).
+    """
+    pdf_field: str
+    canonical_path: str | None = None
+    extra_field_name: str | None = None
+    extra_field_type: str | None = None  # required when extra_field_name is set
+    extra_field_description: str | None = None
+    skip: bool = False
+
+
+class MappingCorrectionsRequest(BaseModel):
+    """Batched corrections for a template's mapping. Apply atomically:
+    either every correction succeeds (path validates, field exists) or the
+    whole batch is rejected so the on-disk mapping never ends up half
+    corrected. The PATCH endpoint returns the updated mapping JSON shape
+    so the frontend can refresh in place."""
+    corrections: list[MappingCorrection]
+
+
+class MappingCorrectionsResponse(BaseModel):
+    mapping: dict
+    extra_fields: list[dict]  # serialized ExtraFieldDTO; avoid forward-ref cycle
+    low_confidence_remaining: int
+    status: str  # "ready" or "needs_attention"
+
+
 class GeneratedDoc(BaseModel):
     document: str
     filename: str

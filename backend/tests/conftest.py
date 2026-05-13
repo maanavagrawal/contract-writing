@@ -163,12 +163,21 @@ def two_authed_clients(clean_db):
 def isolated_template_dirs(tmp_path, monkeypatch):
     """Redirect uploaded-PDF + mapping-JSON dirs to a per-test tmp_path so
     tests don't pollute the real templates/ tree (and don't trip on each
-    other's stale fixture state)."""
+    other's stale fixture state).
+
+    Patches BOTH templates_mod.MAPPINGS_DIR (used by write_mapping_file at
+    upload time) and generate_mod.MAPPINGS_DIR (used by _load_mapping at
+    generate + mapping-correction time). Without both, the PATCH endpoint
+    that re-loads the mapping for editing would 404 in tests because it
+    looks in the real backend/mappings/ while the test wrote to tmp_path.
+    """
     from backend import templates as templates_mod
+    from backend import generate as generate_mod
     test_pdf_dir = tmp_path / "pdf"
     test_mapping_dir = tmp_path / "mappings"
     test_pdf_dir.mkdir()
     test_mapping_dir.mkdir()
     monkeypatch.setattr(templates_mod, "TEMPLATES_PDF_DIR", test_pdf_dir)
     monkeypatch.setattr(templates_mod, "MAPPINGS_DIR", test_mapping_dir)
+    monkeypatch.setattr(generate_mod, "MAPPINGS_DIR", test_mapping_dir)
     yield test_pdf_dir, test_mapping_dir
