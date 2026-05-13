@@ -19,10 +19,16 @@ certifi==2026.4.22
     #   httpcore
     #   httpx
     #   requests
+cffi==2.0.0
+    # via cryptography
 charset-normalizer==3.4.7
-    # via requests
+    # via
+    #   pdfminer-six
+    #   requests
 click==8.3.3
     # via uvicorn
+cryptography==48.0.0
+    # via pdfminer-six
 distro==1.9.0
     # via openai
 fastapi==0.136.1
@@ -46,7 +52,15 @@ itsdangerous==2.2.0
     # via real-estate-paperwork-automator (pyproject.toml)
 jiter==0.14.0
     # via openai
+numpy==2.4.4
+    # via
+    #   opencv-python-headless
+    #   real-estate-paperwork-automator (pyproject.toml)
 openai==2.36.0
+    # via real-estate-paperwork-automator (pyproject.toml)
+opencv-python-headless==4.13.0.92
+    # via real-estate-paperwork-automator (pyproject.toml)
+pdfminer-six==20260107
     # via real-estate-paperwork-automator (pyproject.toml)
 pillow==12.2.0
     # via real-estate-paperwork-automator (pyproject.toml)
@@ -56,6 +70,8 @@ psycopg-binary==3.3.4
     # via psycopg
 psycopg-pool==3.3.1
     # via psycopg
+pycparser==3.0
+    # via cffi
 pycryptodome==3.23.0
     # via real-estate-paperwork-automator (pyproject.toml)
 pydantic==2.13.4
