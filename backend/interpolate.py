@@ -132,13 +132,24 @@ def _split_date(iso: str | None) -> tuple[str, str]:
     return (f"{d.month}/{d.day}", str(d.year)[-2:])
 
 
-def build_context(fields_dict: dict[str, Any], agent_dict: dict[str, Any]) -> dict[str, Any]:
+def build_context(
+    fields_dict: dict[str, Any],
+    agent_dict: dict[str, Any],
+    template_extras: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Flatten the request into a single context dict for templates, and add
     computed convenience fields ({property.address_full}, {today}, etc.).
+
+    template_extras: per-template extra fields extracted from the agent's
+    notes. Mapping strings like "{template_extras.brbc_compensation_percent}"
+    look up template_extras.<name> in ctx, so we stash this here. Defaults
+    to {} when omitted so the resolver returns None for any reference (the
+    field renders blank, same as before this argument existed).
     """
     ctx: dict[str, Any] = dict(fields_dict)
     ctx["agent"] = agent_dict
+    ctx["template_extras"] = dict(template_extras) if template_extras else {}
 
     today = date.today()
     ctx["today"] = today.strftime("%m/%d/%Y")

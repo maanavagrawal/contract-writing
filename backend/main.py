@@ -672,7 +672,10 @@ async def api_generate(
             ))
             continue
         try:
-            out.append(fill_document(doc_key, req.fields, req.agent))
+            out.append(fill_document(
+                doc_key, req.fields, req.agent,
+                template_extras=req.template_extras,
+            ))
         except UnknownDocument as e:
             failures.append(GeneratedDocFailure(document=doc_key, error=str(e)))
         except InvalidMapping as e:

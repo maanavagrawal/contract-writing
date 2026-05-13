@@ -253,3 +253,35 @@ def test_interpolate_mapping_preserves_existing_string_only_mappings():
     assert rendered["TYPE_BOX"] == "/On"
     assert rendered["PRICE"] == "$725,000"
     assert rendered["EMPTY"] == ""
+
+
+# ---- template_extras plumbing (CAR BRBC fix 2026-05-12) ----
+
+def test_template_extras_resolves_in_context():
+    """REGRESSION: before this fix, mapping strings like
+    {template_extras.brbc_compensation_percent} silently rendered blank
+    because build_context never received the extras dict. Confirmed end-to-end
+    via interpolate_mapping."""
+    from backend.interpolate import interpolate_mapping
+    ctx = build_context(
+        {"property": {"address": "221 W Hubbard"}},
+        {"name": "Test Agent"},
+        template_extras={"brbc_compensation_percent": "2.5", "brbc_cities_list": "Oakland"},
+    )
+    rendered = interpolate_mapping({
+        "F1": "{template_extras.brbc_compensation_percent}",
+        "F2": "{template_extras.brbc_cities_list}",
+        "F3": "{template_extras.missing}",
+    }, ctx)
+    assert rendered["F1"] == "2.5"
+    assert rendered["F2"] == "Oakland"
+    assert rendered["F3"] == ""  # missing key → blank, not crash
+
+
+def test_template_extras_defaults_to_empty_when_omitted():
+    """build_context called without template_extras must still produce a ctx
+    that resolves {template_extras.X} to blank (not KeyError)."""
+    from backend.interpolate import interpolate_mapping
+    ctx = build_context({"property": {}}, {"name": "Agent"})
+    rendered = interpolate_mapping({"F": "{template_extras.anything}"}, ctx)
+    assert rendered["F"] == ""

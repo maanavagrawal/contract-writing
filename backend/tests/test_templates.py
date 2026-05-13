@@ -225,6 +225,58 @@ def test_low_confidence_fields_are_blanked_and_surfaced():
     assert by_field["C"]["kind"] == "extra"
 
 
+def test_agent_paths_use_looser_confidence_threshold():
+    """REGRESSION CAR BRBC 2026-05-12: 8 broker-block canonical paths
+    (agent.brokerage_address, agent.phone, etc.) got mapped correctly at
+    conf=4-6 but blanked by the strict threshold=7 gate. Wrong-fill risk is
+    near zero for agent.* paths (the value comes from the logged-in user's
+    own profile), so they use threshold=4 instead."""
+    proposal = ProposedMapping(fields=[
+        ProposedField(pdf_field="A", canonical_path="agent.brokerage_address", confidence=5),
+        ProposedField(pdf_field="B", canonical_path="agent.phone", confidence=4),
+        ProposedField(pdf_field="C", canonical_path="agent.email", confidence=6),
+        # Below the agent threshold (4): still gated.
+        ProposedField(pdf_field="D", canonical_path="agent.brokerage_mls", confidence=3),
+        # Non-agent canonical with same confidence: gated by strict threshold.
+        ProposedField(pdf_field="E", canonical_path="purchase_price", confidence=5),
+    ])
+    mapping, _extras, _unknown, low_conf, _warns = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    assert mapping.fields["A"] == "{agent.brokerage_address}"
+    assert mapping.fields["B"] == "{agent.phone}"
+    assert mapping.fields["C"] == "{agent.email}"
+    assert mapping.fields["D"] == ""  # below loose threshold
+    assert mapping.fields["E"] == ""  # non-agent stays strict
+    low_conf_fields = {f["pdf_field"] for f in low_conf}
+    assert low_conf_fields == {"D", "E"}
+
+
+def test_handfill_extras_suppressed_from_low_confidence_banner():
+    """REGRESSION CAR BRBC 2026-05-12: the 'we weren't sure about 57 fields'
+    banner showed ~40 signing-time entries (ad_sign_date_1, buyer_initials_2,
+    party_role, etc.) that the human fills by hand. Surfacing them is noise.
+    These get suppressed at upload time."""
+    proposal = ProposedMapping(fields=[
+        # Handfill: should NOT appear in low_confidence
+        ProposedField(pdf_field="A", extra_field_name="ad_sign_date_1",
+                      extra_field_type="date", extra_field_description="x", confidence=3),
+        ProposedField(pdf_field="B", extra_field_name="buyer_initials_1",
+                      extra_field_type="text", extra_field_description="x", confidence=3),
+        ProposedField(pdf_field="C", extra_field_name="ad_checkbox_buyer",
+                      extra_field_type="bool", extra_field_description="x", confidence=3),
+        # Real low-confidence extra: SHOULD appear
+        ProposedField(pdf_field="D", extra_field_name="brbc_compensation_percent",
+                      extra_field_type="money", extra_field_description="x", confidence=3),
+    ])
+    _, _, _, low_conf, _ = proposal_to_mapping_file(
+        proposal, title="x", source_pdf_filename="x.pdf", filled_filename="x.pdf",
+    )
+    surfaced = {f["pdf_field"] for f in low_conf}
+    # Signing-time extras hidden; real uncertainty surfaced.
+    assert surfaced == {"D"}
+
+
 # ============================================================================
 # Neighbor-text extraction (the AI's primary signal for label inference)
 # ============================================================================

@@ -42,7 +42,14 @@ from .models import (
 from .pdf_introspect import extract_neighbor_text, walk_fields
 from .schema import BtnChoice, MappingFile, MappingMeta
 
-MODEL = "gpt-5"
+# gpt-5-mini for mapping. The task is classification (pick canonical_path
+# from a fixed allowlist + confidence score given field_name + neighbor_text
+# + optional crop), not open-ended reasoning. extract.py uses mini for the
+# same shape of task and proves quality parity. On the CAR PDF this swap
+# alone takes propose_mapping from ~115s to ~25s — by far the biggest win
+# in upload-latency optimization. Quality is the same as gpt-5 in practice
+# because the allowlist + post-hoc validator already constrains output.
+MODEL = "gpt-5-mini"
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -478,10 +485,12 @@ def _pick_primary_widget(widgets):
 
 # When a form has more than this many fields, chunk the propose_mapping call
 # into batches. The system prompt + schema hint carry fixed cost; field
-# descriptors + crops are variable. Chunking keeps each call under ~30k tokens
-# and avoids hitting context-window limits or response-truncation issues on
-# the 389-field Multi-Board contract.
-CHUNK_SIZE = 120
+# descriptors + crops are variable. Smaller chunks parallelize harder under
+# Semaphore(4): 185 fields ÷ 60 = 4 chunks all in flight at once, vs the
+# old 120-chunk setting which serialized into ceil(185/120)=2 chunks where
+# the slowest dominates wall time. The smaller fixed-prompt amortization
+# cost is dwarfed by the parallelism win.
+CHUNK_SIZE = 60
 
 
 async def _propose_mapping_chunk(
@@ -740,6 +749,84 @@ _CANONICAL_PATH_ALLOWLIST, _CANONICAL_LITERAL_VALUES = _build_canonical_path_all
 # with 30 seconds of user input.
 LOW_CONFIDENCE_THRESHOLD = 7
 
+# Looser threshold for agent.* canonical paths. These point at the logged-in
+# user's own profile (name, brokerage, license, phone, email) — values they
+# already typed once during onboarding. The wrong-fill risk is near zero: if
+# the AI mistakenly tags a "Phone" line as agent.phone when it was actually
+# tenant_or_buyer_phone, the worst case is the agent's own number shows on a
+# buyer line — which they'll spot instantly. Blanking those lines is far
+# worse because they'll then have to hand-fill agent.brokerage_address on
+# every contract forever. CAR BRBC incident 2026-05-12: 8 broker-block
+# canonical paths (brokerage_address, phone, email, license, mls) got
+# correctly identified at conf=4-6 and gated. They should have filled.
+LOW_CONFIDENCE_THRESHOLD_AGENT = 4
+
+
+def _threshold_for_path(canonical_path: str | None) -> int:
+    """Per-path low-confidence threshold. Agent profile paths get a looser
+    gate (see LOW_CONFIDENCE_THRESHOLD_AGENT). Everything else uses the
+    strict default. None defers to the strict default — extra_fields and
+    blank proposals go through the same gate as canonical."""
+    if canonical_path and canonical_path.startswith("agent."):
+        return LOW_CONFIDENCE_THRESHOLD_AGENT
+    return LOW_CONFIDENCE_THRESHOLD
+
+
+# Tokens in extra_field_name that mean "this is a signature-block / initial /
+# decorative field the human fills by hand at signing." Surfacing these in
+# the 'we weren't sure' banner is noise — we never had a chance to fill them
+# in the first place, no data source exists, and the user already understands
+# they sign the form by hand. Caught by user feedback 2026-05-12 (banner
+# showed 57 rows on a CAR BRBC fill, ~40 of which were "ad sign date N",
+# "ad checkbox buyer", "buyer initials N" — all signing-time fields).
+#
+# Matched as substrings on the snake_case extra_field_name. Keep this list
+# tight: false positives suppress legitimate uncertainty signals that the
+# user would want to know about.
+_HANDFILL_NAME_TOKENS = (
+    "sign_date",
+    "signature",
+    "initials",
+    "initial_",
+    "_initial",
+    "party_role",
+    "checkbox_buyer",
+    "checkbox_seller",
+    "checkbox_landlord",
+    "checkbox_tenant",
+    "checkbox_acknowledge",
+    "acknowledge_signature",
+    "acknowledge_date",
+    "acknowledgement_date",
+    "date_line",
+    "logo",
+    "decorative",
+    "header_underline",
+    "graphic_footer",
+    "copyright",
+    "page_title",
+    "form_reference",
+    "paragraph_heading",
+    "paragraph_terms",
+    "_note",
+    "buyer_date",
+    "seller_date",
+    "executor_administration",
+    "entity_buyers",
+    "rep_capacity",
+    "additional_signature_addendum",
+)
+
+
+def _is_handfill_extra(extra_field_name: str | None) -> bool:
+    """True if this extra_field is a signature/initial/decorative field the
+    human fills at signing time. Used to suppress these from the low-confidence
+    banner so the user only sees fields they could actually want surfaced."""
+    if not extra_field_name:
+        return False
+    name = extra_field_name.lower()
+    return any(tok in name for tok in _HANDFILL_NAME_TOKENS)
+
 
 def _sanitize_btn_choices(
     btn_choices: dict[str, str],
@@ -865,7 +952,9 @@ def proposal_to_mapping_file(
                 field_type_by_field[name] = str(fd.get("field_type") or "")
 
     for f in proposal.fields:
-        is_low_confidence = f.confidence < LOW_CONFIDENCE_THRESHOLD
+        # agent.* paths use a looser gate — see _threshold_for_path. All
+        # other paths (and extra_fields) use the strict default.
+        is_low_confidence = f.confidence < _threshold_for_path(f.canonical_path)
 
         if f.canonical_path:
             if f.canonical_path not in _CANONICAL_PATH_ALLOWLIST:
@@ -941,12 +1030,19 @@ def proposal_to_mapping_file(
             if is_low_confidence:
                 # Don't even register the extra — surface and blank.
                 fields[f.pdf_field] = ""
-                low_confidence_fields.append({
-                    "pdf_field": f.pdf_field,
-                    "proposed": f.extra_field_name,
-                    "confidence": f.confidence,
-                    "kind": "extra",
-                })
+                # ...but suppress signing-time fields (initials, sign-dates,
+                # party-role checkboxes, decorative items) from the banner.
+                # We never had a chance to fill those and the user already
+                # understands they sign by hand. Field stays blank either
+                # way; the only thing _is_handfill_extra changes is whether
+                # we shout about it in the UI.
+                if not _is_handfill_extra(f.extra_field_name):
+                    low_confidence_fields.append({
+                        "pdf_field": f.pdf_field,
+                        "proposed": f.extra_field_name,
+                        "confidence": f.confidence,
+                        "kind": "extra",
+                    })
             elif f.btn_choices and field_type_by_field.get(f.pdf_field) == "/Btn":
                 # /Btn field tied to a template_extras boolean (e.g. dual_agency
                 # checkbox). Same sanitization, path is template_extras.<name>.

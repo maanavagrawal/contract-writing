@@ -91,6 +91,14 @@ let attachedImages = []; // File[]
 // click Extract for the canonical accordion+readiness state.
 let extracted = false;
 
+// Per-template extras most recently extracted from the agent's notes. Shape:
+// {template_id: {extra_name: value, ...}, ...}. Lives outside the [data-path]
+// form because extras are template-specific and don't have permanent inputs
+// in the canonical accordion. Replayed verbatim to /api/generate so mappings
+// like "{template_extras.brbc_compensation_percent}" resolve at fill time.
+// Cleared when the user clears notes; overwritten on each extract response.
+let lastTemplateExtras = {};
+
 // Preview-mode state
 let lastGenerated = []; // last /api/generate response (array of {document, filename, base64, content_type})
 let activeDocKey = null;
@@ -301,6 +309,13 @@ function populateFields(data) {
     if (str) input.classList.add("from-extract");
     else input.classList.remove("from-extract");
   });
+  // Stash template_extras outside the [data-path] form so collectFields can
+  // forward them to /api/generate. Extras are per-template and don't have
+  // canonical accordion inputs; without this stash they'd be dropped on the
+  // first generate after extract.
+  if (data && typeof data.template_extras === "object" && data.template_extras !== null) {
+    lastTemplateExtras = data.template_extras;
+  }
   // Keep the chip strip in lockstep with the accordion. Live-stream events
   // (workstream A) populate chips one-by-one as they arrive; this is the
   // catch-up for fields that have a value in the payload but no chip event
@@ -1273,6 +1288,13 @@ function handleSseBlock(block) {
   } else if (eventName === "done") {
     try {
       const payload = JSON.parse(data);
+      // Stash extras from the live-tier "done" payload too — if the user
+      // hits Generate without clicking the full Extract button, we still
+      // want the most recent extras to round-trip. populateFields does this
+      // on the full-extract path; mirror it here.
+      if (payload && typeof payload.template_extras === "object" && payload.template_extras !== null) {
+        lastTemplateExtras = payload.template_extras;
+      }
       // Lazily populate the accordion too — the user hasn't clicked Extract
       // but if they open the parsed-fields panel after a live run, we want
       // it to reflect what the chips are showing.
@@ -1379,6 +1401,7 @@ async function runGenerate(triggerBtn) {
       fields: collectFields(),
       agent: readProfileFromInputs(),
       documents: allSelected,
+      template_extras: lastTemplateExtras,
     };
     const res = await authedFetch("/api/generate", {
       method: "POST",

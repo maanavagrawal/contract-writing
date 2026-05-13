@@ -160,6 +160,14 @@ class GenerateRequest(BaseModel):
         ...,
         description="List of document keys to generate, e.g. ['lease_invoice', 'lease_abstract']",
     )
+    # Per-template extras values extracted from the agent's notes. Shape mirrors
+    # what extract.py emits on the dynamic schema's TransactionFieldsExtended:
+    # {template_id: {extra_field_name: value, ...}, ...}. The generate path
+    # flattens these into ctx["template_extras"] so mapping strings like
+    # "{template_extras.brbc_compensation_percent}" resolve at fill time. Without
+    # this, every template-specific extras reference renders blank — the CAR
+    # BRBC fill bug 2026-05-12 traced back to this missing argument.
+    template_extras: dict[str, dict[str, object]] | None = None
 
 
 class UncertainField(BaseModel):

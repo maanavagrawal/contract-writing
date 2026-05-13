@@ -25,6 +25,7 @@ from pypdf import PdfReader
 from .interpolate import build_context, interpolate_mapping
 from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields, UncertainField
+from .templates import _is_handfill_extra
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,6 +86,7 @@ def fill_document(
     document_key: str,
     fields: TransactionFields,
     agent: AgentProfile,
+    template_extras: dict[str, dict[str, object]] | None = None,
 ) -> GeneratedDoc:
     mapping = _load_mapping(document_key)
 
@@ -92,9 +94,20 @@ def fill_document(
     if not source_pdf.exists():
         raise FileNotFoundError(f"template PDF missing: {source_pdf}")
 
+    # Pick this template's extras out of the per-template dict the request
+    # carries. Mapping strings use "{template_extras.<name>}" (NOT keyed by
+    # template id — the AI doesn't know its own template id at mapping time),
+    # so we flatten just this template's slice into ctx.template_extras.
+    extras_for_this_doc: dict[str, object] = {}
+    if template_extras:
+        per_template = template_extras.get(document_key)
+        if isinstance(per_template, dict):
+            extras_for_this_doc = per_template
+
     ctx = build_context(
         fields_dict=fields.model_dump(mode="json"),
         agent_dict=agent.model_dump(mode="json"),
+        template_extras=extras_for_this_doc,
     )
 
     # interpolate_mapping handles both string templates and BtnChoice
@@ -108,14 +121,23 @@ def fill_document(
     # Surface low-confidence fields to the frontend so the user can see
     # what we left blank and decide whether to fill it by hand. The mapping
     # already blanked them via proposal_to_mapping_file at upload time.
+    #
+    # Suppress signing-time fields (initials, sign-dates, party-role checkboxes,
+    # decorative items) — proposal_to_mapping_file added the suppress filter
+    # at upload time, but apply the same filter here too so older mappings
+    # (uploaded before the filter shipped) benefit without re-upload.
     uncertain: list[UncertainField] = []
     for lc in mapping.low_confidence or []:
         try:
+            kind = lc["kind"]
+            proposed = lc["proposed"]
+            if kind == "extra" and _is_handfill_extra(proposed):
+                continue
             uncertain.append(UncertainField(
                 pdf_field=lc["pdf_field"],
-                proposed=lc["proposed"],
+                proposed=proposed,
                 confidence=int(lc["confidence"]),
-                kind=lc["kind"],
+                kind=kind,
             ))
         except (KeyError, TypeError, ValueError):
             # Malformed entry from a hand-edited mapping JSON; skip silently
