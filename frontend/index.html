@@ -389,6 +389,25 @@
               <input type="email" data-profile="email" placeholder="—" />
             </label>
           </div>
+          <!-- Signature & initials row. The thumbnail previews the saved PNG;
+               clicking either opens the capture modal pre-loaded with the
+               current value. Empty state shows a dashed placeholder + "Set up". -->
+          <div class="field signature-row">
+            <span class="field-label">Signature &amp; initials</span>
+            <div class="signature-row-body">
+              <button type="button" class="signature-thumb" id="signature-thumb" aria-label="Edit signature">
+                <img id="signature-thumb-img" alt="" hidden />
+                <span class="signature-thumb-empty" id="signature-thumb-empty">Signature</span>
+              </button>
+              <button type="button" class="signature-thumb signature-thumb-initials" id="initials-thumb" aria-label="Edit initials">
+                <img id="initials-thumb-img" alt="" hidden />
+                <span class="signature-thumb-empty" id="initials-thumb-empty">Initials</span>
+              </button>
+              <div class="signature-row-help">
+                <p>Stamped on every form you generate. Clients still sign separately.</p>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="drawer-account">
           <div class="drawer-account-row">
@@ -458,6 +477,67 @@
           <button class="btn-ghost" data-close id="upload-cancel">Cancel</button>
           <button class="btn-primary" id="upload-submit" disabled>
             <span class="btn-label">Upload</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Signature capture modal — two tabs (Type / Draw), with the second
+         pane revealing the initials capture after the signature is set. -->
+    <aside class="modal" id="signature-modal" hidden>
+      <div class="modal-scrim" data-close></div>
+      <div class="modal-panel signature-modal-panel">
+        <div class="modal-header">
+          <h2 class="modal-title" id="signature-modal-title">Set your signature</h2>
+          <button class="btn-icon" data-close aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <p class="modal-sub" id="signature-modal-sub">
+          Stamped on every form you generate. Clients still sign separately.
+        </p>
+
+        <div class="modal-body signature-modal-body">
+          <div class="signature-tabs" role="tablist">
+            <button type="button" class="signature-tab is-active" data-sig-tab="type" role="tab">Type</button>
+            <button type="button" class="signature-tab" data-sig-tab="draw" role="tab">Draw</button>
+          </div>
+
+          <!-- Type tab: live-rendered cursive preview of the agent's name. -->
+          <div class="signature-pane" data-sig-pane="type">
+            <label class="field">
+              <span class="field-label" id="signature-type-label">Your name</span>
+              <input type="text" id="signature-type-input" placeholder="Jane Doe" autocomplete="off" />
+            </label>
+            <div class="signature-font-picker">
+              <button type="button" class="signature-font-option is-active" data-sig-font="Caveat">Caveat</button>
+              <button type="button" class="signature-font-option" data-sig-font="Great Vibes">Great Vibes</button>
+              <button type="button" class="signature-font-option" data-sig-font="Sacramento">Sacramento</button>
+            </div>
+            <div class="signature-preview" id="signature-preview-type" aria-live="polite">
+              <span class="signature-preview-text" id="signature-preview-text"></span>
+            </div>
+          </div>
+
+          <!-- Draw tab: canvas the agent draws on with trackpad/mouse. -->
+          <div class="signature-pane" data-sig-pane="draw" hidden>
+            <div class="signature-canvas-wrap">
+              <canvas id="signature-canvas" width="600" height="200"></canvas>
+              <div class="signature-canvas-baseline"></div>
+              <span class="signature-canvas-hint">Draw your signature here</span>
+            </div>
+            <div class="signature-canvas-controls">
+              <button type="button" class="btn-ghost btn-sm" id="signature-clear-btn">Clear</button>
+              <span class="hint">Use your trackpad or mouse. Right-handed feels best on a Mac trackpad.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-ghost" data-close>Cancel</button>
+          <button class="btn-primary" id="signature-save-btn">
+            <span class="btn-label">Save signature</span>
             <span class="btn-spinner" hidden></span>
           </button>
         </div>

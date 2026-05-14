@@ -23,7 +23,8 @@ import {
   updateChipFromField,
 } from "/modules/chips.js";
 import { initVoice } from "/modules/voice.js";
-import { initDefaults, saveAsDefault, removeDefault, isPathDefaulted } from "/modules/defaults.js";
+import { initDefaults, saveAsDefault, removeDefault, isPathDefaulted, getDefaults } from "/modules/defaults.js";
+import { initSignature, openSignatureModal } from "/modules/signature.js";
 
 // Templates the user has uploaded. IMPLEMENTED_DOCS is the live set used
 // when validating which keys can be passed to /api/generate.
@@ -231,6 +232,13 @@ function readProfileFromInputs() {
   document.querySelectorAll("[data-profile]").forEach((input) => {
     profile[input.dataset.profile] = input.value.trim() || null;
   });
+  // Merge signature + initials from the server-side defaults store. These
+  // don't live in form inputs (they're base64 PNGs stored in
+  // agent_defaults, captured via the signature modal), so the profile
+  // reader has to pull them out-of-band from the defaults cache.
+  const d = getDefaults();
+  if (d["agent.signature"]) profile.signature = d["agent.signature"];
+  if (d["agent.initials"]) profile.initials = d["agent.initials"];
   return profile;
 }
 
@@ -1574,6 +1582,29 @@ async function runGenerate(triggerBtn) {
       const summary = failures.map((f) => `${FRIENDLY[f.document] || f.document}: ${f.error}`).join("\n");
       toast(`${failures.length} doc${failures.length === 1 ? "" : "s"} failed:\n${summary}`, "error", 7000);
     }
+
+    // Signature follow-up. If the batch needed a signature and the agent
+    // hasn't set one up yet, open the capture modal — they can come back
+    // and regenerate to get the signed version. We open this AFTER the
+    // generated docs render so the agent isn't ambushed mid-flow; they
+    // see their (unsigned) docs first, then get nudged to upgrade.
+    const sigStatus = data.signature_status || {};
+    if (sigStatus.required_by_template && !sigStatus.user_has_signature) {
+      const nameEl = document.querySelector('[data-profile="name"]');
+      openSignatureModal({
+        mode: "agent",
+        agentName: nameEl ? nameEl.value : "",
+      });
+      toast("Add your signature once — every form will pick it up.", "info", 5500);
+    } else if (sigStatus.fields_left_blank > 0) {
+      // Saved signature but stamping failed on some fields — soft warning.
+      toast(
+        `Signature couldn't be stamped on ${sigStatus.fields_left_blank} field${sigStatus.fields_left_blank === 1 ? "" : "s"}. ` +
+        `Try re-saving your signature in Profile.`,
+        "warning",
+        6000,
+      );
+    }
     if (data.documents.length === 0 && failures.length > 0) {
       // Whole batch failed — make sure we don't leave the user staring at
       // a stale preview from the previous generate.
@@ -1908,6 +1939,24 @@ async function bootstrap() {
       // tick + save-default affordances refresh.
       const chipStrip = document.getElementById("chip-strip");
       if (chipStrip) reconcileFromPayload(collectFields());
+    },
+  });
+
+  // Signature capture (thumbnails in the profile drawer + modal).
+  // Wired after defaults so the initial thumbnail render can read the
+  // saved signature/initials PNGs (if any) off the loaded defaults state.
+  initSignature({
+    authedFetch,
+    toast,
+    saveDefault: saveAsDefault,
+    getDefaults,
+    // Pulled fresh on each modal-open call: the modal pre-fills the typed-
+    // signature input with the agent's name from the profile drawer. Reading
+    // from the DOM matches whatever the agent currently has typed even if
+    // they haven't pressed Save yet.
+    getAgentName: () => {
+      const el = document.querySelector('[data-profile="name"]');
+      return el ? el.value : "";
     },
   });
 

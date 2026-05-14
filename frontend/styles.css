@@ -1688,3 +1688,195 @@ details.uncertain-fields[open] .uncertain-chevron {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+/* ============================================================
+   Signature feature
+   - Profile drawer: thumbnails for signature + initials
+   - Modal: tabs for Type / Draw, font picker, canvas
+   Loaded fonts (Caveat, Great Vibes, Sacramento) come from Google Fonts
+   lazy-loaded by app.js on first signature-modal open — keeps the
+   initial page load light for agents who don't sign today.
+   ============================================================ */
+
+.signature-row {
+  margin-top: 4px;
+}
+.signature-row-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.signature-thumb {
+  flex: 0 0 auto;
+  width: 140px;
+  height: 56px;
+  background: var(--surface-2, #f5f5f7);
+  border: 1px dashed var(--border, #d2d2d7);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.signature-thumb:hover {
+  border-color: var(--accent, #007aff);
+  background: var(--surface, #fff);
+}
+.signature-thumb-initials {
+  width: 56px;
+}
+.signature-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.signature-thumb-empty {
+  font-size: 12px;
+  color: var(--text-secondary, #6e6e73);
+  letter-spacing: -0.01em;
+}
+.signature-row-help {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-secondary, #6e6e73);
+  line-height: 1.4;
+}
+.signature-row-help p { margin: 0; }
+
+/* Modal */
+.signature-modal-panel {
+  width: 600px;
+  max-width: 92vw;
+}
+.signature-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.signature-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border, #d2d2d7);
+  margin-bottom: 4px;
+}
+.signature-tab {
+  background: transparent;
+  border: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #6e6e73);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.signature-tab:hover { color: var(--text, #1d1d1f); }
+.signature-tab.is-active {
+  color: var(--text, #1d1d1f);
+  border-bottom-color: var(--accent, #007aff);
+}
+
+.signature-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.signature-pane[hidden] { display: none; }
+
+.signature-font-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.signature-font-option {
+  padding: 6px 12px;
+  background: var(--surface-2, #f5f5f7);
+  border: 1px solid var(--border, #d2d2d7);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: var(--sig-font, "Caveat", cursive);
+  transition: all 0.15s ease;
+}
+.signature-font-option:hover {
+  border-color: var(--accent, #007aff);
+  background: var(--surface, #fff);
+}
+.signature-font-option.is-active {
+  background: var(--accent, #007aff);
+  color: white;
+  border-color: var(--accent, #007aff);
+}
+.signature-font-option[data-sig-font="Caveat"] { font-family: "Caveat", cursive; }
+.signature-font-option[data-sig-font="Great Vibes"] { font-family: "Great Vibes", cursive; }
+.signature-font-option[data-sig-font="Sacramento"] { font-family: "Sacramento", cursive; }
+
+.signature-preview {
+  background: var(--surface-2, #f5f5f7);
+  border: 1px solid var(--border, #d2d2d7);
+  border-radius: 8px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 12px 24px;
+  overflow: hidden;
+}
+.signature-preview-text {
+  font-size: 48px;
+  font-family: var(--sig-font, "Caveat", cursive);
+  color: var(--text, #1d1d1f);
+  line-height: 1;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.signature-canvas-wrap {
+  position: relative;
+  background: var(--surface-2, #f5f5f7);
+  border: 1px solid var(--border, #d2d2d7);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+#signature-canvas {
+  display: block;
+  width: 100%;
+  height: 200px;
+  background: transparent;
+}
+.signature-canvas-baseline {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 36px;
+  border-bottom: 1px dashed var(--border, #d2d2d7);
+  pointer-events: none;
+}
+.signature-canvas-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  color: var(--text-tertiary, #a1a1a6);
+  pointer-events: none;
+  letter-spacing: -0.01em;
+  transition: opacity 0.2s ease;
+}
+.signature-canvas-wrap.has-content .signature-canvas-hint { opacity: 0; }
+.signature-canvas-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.signature-canvas-controls .hint {
+  font-size: 11.5px;
+  color: var(--text-secondary, #6e6e73);
+}
