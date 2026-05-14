@@ -52,6 +52,7 @@ from .schema import (
     PageRenderDTO,
     PreviewRequest,
     PreviewResponse,
+    SignatureStatus,
     TemplateListItem,
     TemplateListResponse,
     TemplateUploadResponse,
@@ -557,6 +558,18 @@ async def api_put_default(
         raise HTTPException(400, f"field_path not eligible for defaults: {field_path}")
     if not req.value:
         raise HTTPException(400, "value must not be empty (use DELETE to clear)")
+    # Hard cap on base64-PNG defaults. A 600x200 transparent signature PNG is
+    # ~10-20KB base64; legitimate clients stay well under the 200KB cap. The
+    # cap stops a misbehaving (or malicious) client from flooding the table
+    # with a 50MB blob and degrading list_defaults for that user. Text-valued
+    # defaults are NOT capped here — they're short by nature.
+    if field_path in defaults_mod.BLOB_VALUED_PATHS:
+        if len(req.value.encode("utf-8")) > defaults_mod.MAX_BLOB_VALUE_BYTES:
+            raise HTTPException(
+                413,
+                f"value too large for {field_path}: max "
+                f"{defaults_mod.MAX_BLOB_VALUE_BYTES} bytes",
+            )
     with get_conn() as conn:
         defaults_mod.upsert_default(conn, user.id, field_path, req.value)
     return {"ok": True, "field_path": field_path}
@@ -718,7 +731,24 @@ async def api_generate(
             failures.append(GeneratedDocFailure(
                 document=doc_key, error=f"fill failed: {e}",
             ))
-    return GenerateResponse(documents=out, failures=failures)
+    # Roll the per-doc signature counts into the batch-level status the
+    # frontend uses to decide whether to prompt for signature capture.
+    # required_by_template = any doc had at least one signature mapping.
+    # user_has_signature = the request payload carried a signature blob
+    # (decoupled from the per-doc fill so the decision works even on
+    # 0-document edge cases).
+    sig_total = sum(d.signature_fields_total for d in out)
+    sig_stamped = sum(d.signature_fields_stamped for d in out)
+    has_sig = bool((req.agent.signature or "").strip()) or bool((req.agent.initials or "").strip())
+    return GenerateResponse(
+        documents=out,
+        failures=failures,
+        signature_status=SignatureStatus(
+            required_by_template=sig_total > 0,
+            user_has_signature=has_sig,
+            fields_left_blank=max(0, sig_total - sig_stamped),
+        ),
+    )
 
 
 # Defensive caps to keep a runaway render from hanging the worker.

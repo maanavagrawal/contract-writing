@@ -42,6 +42,12 @@ import psycopg
 #   agent.mls                      — agent's individual MLS ID
 #   agent.license                  — agent's individual license #
 #   agent.email_signature          — for documents that include it (templates)
+#   agent.signature                — base64 PNG, stamped onto "By (Broker/Agent)"
+#                                    rows during fill. Set via the signature
+#                                    capture modal. See pdf_fill._stamp_signature.
+#   agent.initials                 — base64 PNG, stamped onto "Agent's Initials"
+#                                    boxes. Captured alongside agent.signature in
+#                                    the same modal.
 ALLOWED_DEFAULT_PATHS: frozenset[str] = frozenset({
     "escrowee",
     "loan_amortization_years",
@@ -57,7 +63,20 @@ ALLOWED_DEFAULT_PATHS: frozenset[str] = frozenset({
     "agent.mls",
     "agent.license",
     "agent.email_signature",
+    "agent.signature",
+    "agent.initials",
 })
+
+# Paths whose value is a base64-encoded PNG, not free text. The API gate caps
+# their size at MAX_BLOB_VALUE_BYTES (~200KB base64 ≈ 150KB binary) to keep a
+# misbehaving client from flooding agent_defaults with a 50MB PNG and slowing
+# down every list_defaults call for that user. Postgres TOAST handles small
+# blobs cleanly; the cap is operational paranoia, not a storage limit.
+BLOB_VALUED_PATHS: frozenset[str] = frozenset({
+    "agent.signature",
+    "agent.initials",
+})
+MAX_BLOB_VALUE_BYTES: int = 200 * 1024
 
 # List-typed top-level fields in TransactionFields. Adding ANY of these to
 # ALLOWED_DEFAULT_PATHS would let _merge_defaults_into clobber an extracted

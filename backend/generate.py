@@ -25,6 +25,7 @@ from pypdf import PdfReader
 from .interpolate import build_context, interpolate_mapping
 from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields, UncertainField
+from .signature_stamp import InvalidSignaturePng, SigStamp
 from .templates import _is_handfill_extra
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -113,10 +114,73 @@ def fill_document(
     # interpolate_mapping handles both string templates and BtnChoice
     # conditional state lookups. Returns a flat {pdf_field: rendered_string}
     # dict ready for fill_pdf.
-    rendered = interpolate_mapping(mapping.fields, ctx)
+    rendered: dict[str, object] = dict(interpolate_mapping(mapping.fields, ctx))
+
+    # Signature substitution. Any pdf_field whose mapping template was exactly
+    # "{agent.signature}" or "{agent.initials}" gets its rendered string
+    # value replaced with a SigStamp dataclass so pdf_fill stamps the PNG
+    # instead of writing text. Detection is done on the source mapping
+    # template (not the rendered value) because the rendered value would be
+    # the literal base64 string and that's ambiguous with an actual base64
+    # field value the user might have legitimately typed somewhere else.
+    #
+    # If the agent hasn't saved a signature (agent.signature is None), the
+    # rendered string for those fields is empty — pdf_fill already skips
+    # empties, so the field stays blank without further action.
+    signature_b64 = (agent.signature or "").strip()
+    initials_b64 = (agent.initials or "").strip()
+    signature_fields_total = 0
+    signature_fields_stamped = 0
+    for pdf_field, raw_template in mapping.fields.items():
+        if not isinstance(raw_template, str):
+            continue
+        template = raw_template.strip()
+        if template == "{agent.signature}":
+            signature_fields_total += 1
+            if signature_b64:
+                try:
+                    rendered[pdf_field] = SigStamp(
+                        kind="agent",
+                        png_bytes=base64.b64decode(signature_b64, validate=True),
+                    )
+                    signature_fields_stamped += 1
+                except Exception:
+                    # Corrupt base64 in the stored default — fall through to
+                    # blank field + soft warning. Never 500 on a bad PNG.
+                    rendered[pdf_field] = ""
+            else:
+                rendered[pdf_field] = ""
+        elif template == "{agent.initials}":
+            signature_fields_total += 1
+            if initials_b64:
+                try:
+                    rendered[pdf_field] = SigStamp(
+                        kind="initials",
+                        png_bytes=base64.b64decode(initials_b64, validate=True),
+                    )
+                    signature_fields_stamped += 1
+                except Exception:
+                    rendered[pdf_field] = ""
+            else:
+                rendered[pdf_field] = ""
 
     reader = PdfReader(str(source_pdf))
-    pdf_bytes = fill_pdf(reader, rendered)
+    try:
+        pdf_bytes = fill_pdf(reader, rendered)
+    except InvalidSignaturePng:
+        # The PNG decoded fine here but reportlab choked on it at stamp
+        # time — fall back to a fill with all signature fields blanked and
+        # re-issue the call. Slow path but rare; corrupt-but-decodable
+        # PNGs are an edge case worth handling without a 500.
+        rendered = {
+            k: ("" if isinstance(v, SigStamp) else v)
+            for k, v in rendered.items()
+        }
+        pdf_bytes = fill_pdf(reader, rendered)
+        # Reset stamp count — fallback wrote zero stamps. The
+        # signature_fields_total still reflects what the template asked for,
+        # so signature_status.fields_left_blank will surface correctly.
+        signature_fields_stamped = 0
 
     # Surface low-confidence fields to the frontend so the user can see
     # what we left blank and decide whether to fill it by hand. The mapping
@@ -149,4 +213,6 @@ def fill_document(
         filename=mapping.meta.filled_filename or f"{document_key}_filled.pdf",
         base64=base64.b64encode(pdf_bytes).decode("ascii"),
         uncertain_fields=uncertain,
+        signature_fields_total=signature_fields_total,
+        signature_fields_stamped=signature_fields_stamped,
     )

@@ -151,6 +151,20 @@ class AgentProfile(BaseModel):
     phone: str | None = None
     email: str | None = None
     mls: str | None = None
+    # Signature and initials are base64-encoded PNGs (transparent background,
+    # roughly 600x200 / 200x100). When set, generate-time fill stamps the
+    # decoded PNG onto any field the AI mapped to agent.signature /
+    # agent.initials. Stays None for agents who haven't set them up yet —
+    # the corresponding fields render blank, no error. See
+    # backend/signature_stamp.py for the rendering pipeline.
+    signature: str | None = Field(
+        None,
+        description="Base64-encoded transparent PNG of the agent's signature."
+    )
+    initials: str | None = Field(
+        None,
+        description="Base64-encoded transparent PNG of the agent's initials."
+    )
 
 
 class GenerateRequest(BaseModel):
@@ -226,6 +240,12 @@ class GeneratedDoc(BaseModel):
     # rendered blank in this filled PDF. Frontend surfaces them as
     # "we weren't sure, please fill these in" after generate.
     uncertain_fields: list[UncertainField] = Field(default_factory=list)
+    # Per-doc signature accounting; api_generate aggregates these across the
+    # batch into the top-level GenerateResponse.signature_status. Bubbling
+    # per-doc avoids a second pass over the mapping after fill_document
+    # returns.
+    signature_fields_total: int = 0          # count of {agent.signature} / {agent.initials} mappings
+    signature_fields_stamped: int = 0        # count actually drawn onto the PDF
 
 
 class GeneratedDocFailure(BaseModel):
@@ -235,9 +255,30 @@ class GeneratedDocFailure(BaseModel):
     error: str
 
 
+class SignatureStatus(BaseModel):
+    """How the signature pipeline interacted with this generate call.
+
+    Four cells the frontend uses to decide whether to prompt or warn:
+      - required_by_template=True, user_has_signature=False
+        → open the capture modal; the agent hasn't onboarded yet.
+      - required_by_template=True, user_has_signature=True, fields_left_blank=0
+        → silent success; signature appears on every relevant field.
+      - required_by_template=True, user_has_signature=True, fields_left_blank>0
+        → soft warning; the saved PNG was unreadable on some fields.
+      - required_by_template=False
+        → no UI action; the template has no signature fields.
+
+    Computed in fill_document; aggregated across the batch in api_generate.
+    """
+    required_by_template: bool = False
+    user_has_signature: bool = False
+    fields_left_blank: int = 0
+
+
 class GenerateResponse(BaseModel):
     documents: list[GeneratedDoc]
     failures: list[GeneratedDocFailure] = Field(default_factory=list)
+    signature_status: SignatureStatus = Field(default_factory=SignatureStatus)
 
 
 # ---- Mapping JSON validation ----
