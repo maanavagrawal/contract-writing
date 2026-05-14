@@ -24,6 +24,7 @@ cffi==2.0.0
 charset-normalizer==3.4.7
     # via
     #   pdfminer-six
+    #   reportlab
     #   requests
 click==8.3.3
     # via uvicorn
@@ -63,7 +64,9 @@ opencv-python-headless==4.13.0.92
 pdfminer-six==20260107
     # via real-estate-paperwork-automator (pyproject.toml)
 pillow==12.2.0
-    # via real-estate-paperwork-automator (pyproject.toml)
+    # via
+    #   real-estate-paperwork-automator (pyproject.toml)
+    #   reportlab
 psycopg[binary,pool]==3.3.4
     # via real-estate-paperwork-automator (pyproject.toml)
 psycopg-binary==3.3.4
@@ -93,6 +96,8 @@ python-multipart==0.0.27
     # via real-estate-paperwork-automator (pyproject.toml)
 pyyaml==6.0.3
     # via uvicorn
+reportlab==4.5.1
+    # via real-estate-paperwork-automator (pyproject.toml)
 requests==2.33.1
     # via resend
 resend==2.30.0
