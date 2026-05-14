@@ -212,9 +212,30 @@ You decide ONE of:
      later use to pull this value out of the agent's notes (e.g. "the pet's
      name as written"). Leave canonical_path null.
 
-  C) The field is a signature (/Sig) or a separator the user fills by hand.
-     Treat as a template-specific extra_field with type='text' and
-     description='handwritten by signer at signing time'.
+  C) The field is a signature (/Sig) or signature-line /Tx field, OR a
+     separator/initials slot. Apply this split:
+
+     (C1) AGENT signature/initials — fields explicitly labeled "By
+          (Broker/Agent)", "Agent Signature", "Broker Signature",
+          "Salesperson Signature", or "Agent's Initials" / "Broker's
+          Initials" / "Listing Agent Initials". These are signed by the
+          AGENT (the person generating this form). Map to:
+              canonical_path = "agent.signature"  (for signature rows)
+              canonical_path = "agent.initials"   (for initials boxes)
+          The fill pipeline stamps a saved PNG image onto these fields at
+          generate time — DO NOT treat them as text fields or handfill
+          extras.
+
+     (C2) COUNTERPARTY signature/initials — fields labeled "Buyer
+          Signature", "Seller Signature", "Tenant Signature", "Landlord
+          Signature", "Buyer's Initials", "Seller's Initials". These are
+          signed by clients, NOT the agent. Keep the C-bucket handfill
+          behavior: extra_field with type='text' and
+          description='handwritten by signer at signing time'.
+
+     The disambiguator is WHO signs that specific row, not what the field
+     looks like. A /Sig widget can be either agent-side or counterparty-
+     side; the neighbor text + crop image tell you which.
 
 Rules:
   - Map every field. Do not skip any.
@@ -247,9 +268,15 @@ Rules:
                                                → agent.brokerage
     "Brokerage" + Lic # next to it / Lic # right of firm name
                                                → agent.brokerage_license
-    "By" (right after broker firm row) / "By (Broker/Agent)" / "Agent" /
-      "Broker/Agent" / "Salesperson or Broker-Associate"
-                                               → agent.name
+    "By" (right after broker firm row) / "By (Broker/Agent)" — when this
+      slot expects a PRINTED NAME (a separate signature slot is also on
+      this row)                                → agent.name
+    "By (Broker/Agent) Signature" / "Agent Signature" / "Broker
+      Signature" / "Salesperson Signature" / "Signature of Broker/Agent"
+      — the SIGNATURE slot on the agent's row (not the printed name)
+                                               → agent.signature
+    "Agent's Initials" / "Broker's Initials" / "Listing Agent Initials"
+                                               → agent.initials
     "DRE Lic. #" / "DRE Lic #" / "License Number" (when next to "By" or
       "Agent" name, NOT next to the firm)      → agent.license
     "Address" + "City" + "State" + "Zip" in broker block
@@ -257,6 +284,12 @@ Rules:
     "Tel." / "Phone" (broker block)            → agent.phone
     "E-mail" / "Email" (broker block)          → agent.email
     "MLS #"                                    → agent.mls
+
+  Counterparty signature rows (these STAY as handfill extras):
+    "Buyer Signature" / "Buyer's Signature" / "Seller Signature" /
+      "Tenant Signature" / "Landlord Signature" — clients sign these,
+      not the agent. Treat as extra_field with type='text' and
+      description='handwritten by signer at signing time'.
 
   Same-row disambiguation tip: the broker signature block has TWO
   Name+License pairs per row: (Firm + Firm-License) and (Agent + Agent-
@@ -513,6 +546,15 @@ Agent profile (use as 'agent.<x>'):
   agent.name, agent.license, agent.brokerage, agent.brokerage_address,
   agent.brokerage_mls, agent.brokerage_license, agent.phone, agent.email,
   agent.mls
+  agent.signature             image stamp — for "By (Broker/Agent)" /
+                              "Signature" / "Sign Here" rows belonging to
+                              the AGENT (NOT buyer/seller/tenant/landlord).
+                              Counterparty signature rows stay null.
+  agent.initials              image stamp — for "Agent's Initials" /
+                              "Broker's Initials" boxes (typically small
+                              squares at the page footer). Counterparty
+                              initials boxes (Buyer's / Seller's / etc.)
+                              stay null — those are wet-signed by clients.
 
 Computed values (auto-filled at generate time, use as canonical_path):
   today                       MM/DD/YYYY of fill date — for any field labeled
@@ -1388,6 +1430,23 @@ _EXTRA_TO_CANONICAL_RULES: tuple[tuple[tuple[tuple[str, ...], ...], str], ...] =
     # Commission/compensation.
     ((("compensation",), ("percent",)), "commission_amount"),
     ((("commission",), ("percent", "amount")), "commission_amount"),
+    # Agent signature image stamps. The AI sometimes emits
+    # "agent_signature_by_line_1" / "broker_signature" / "signed_by_agent"
+    # as extras when the field is a "By (Broker/Agent)" row that should
+    # carry the agent's signature PNG. Required tokens: "signature" or
+    # "signed", AND a clearly-agent-side qualifier ("agent", "broker",
+    # "by", "salesperson"). Buyer/seller/tenant signature extras stay
+    # null — those are wet-signed by counterparties, not stamped by us.
+    ((("signature", "signed"), ("agent", "broker", "salesperson")), "agent.signature"),
+    # "by_signature" pattern: signature on the agent's row, marked by the
+    # "By (Agent)" label. The token "by" alone is ambiguous (appears in
+    # "by_buyer" too) so we require it paired with explicit signature/sign.
+    ((("signature",), ("by",)), "agent.signature"),
+    # Initials boxes for the agent. Same disambiguation as signature:
+    # only promote when the field clearly belongs to the agent/broker,
+    # not when it's a generic "initials" extra (which is correctly
+    # suppressed as handfill — buyer/seller initials are wet-signed).
+    ((("initial",), ("agent", "broker", "salesperson")), "agent.initials"),
 )
 
 
