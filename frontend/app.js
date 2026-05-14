@@ -62,6 +62,8 @@ const els = {
   regenerateBtn: document.getElementById("regenerate-btn"),
   saveEditsBtn: document.getElementById("save-edits-btn"),
   saveEditsLabel: document.getElementById("save-edits-label"),
+  signBtn: document.getElementById("sign-btn"),
+  signBtnLabel: document.getElementById("sign-btn-label"),
   tabStrip: document.getElementById("tab-strip"),
   pagesScroll: document.getElementById("pages-scroll"),
   pagesLoading: document.getElementById("pages-loading"),
@@ -227,18 +229,24 @@ function loadProfile() {
   });
 }
 
-function readProfileFromInputs() {
+function readProfileFromInputs({ includeSignature = false } = {}) {
   const profile = {};
   document.querySelectorAll("[data-profile]").forEach((input) => {
     profile[input.dataset.profile] = input.value.trim() || null;
   });
-  // Merge signature + initials from the server-side defaults store. These
-  // don't live in form inputs (they're base64 PNGs stored in
-  // agent_defaults, captured via the signature modal), so the profile
-  // reader has to pull them out-of-band from the defaults cache.
-  const d = getDefaults();
-  if (d["agent.signature"]) profile.signature = d["agent.signature"];
-  if (d["agent.initials"]) profile.initials = d["agent.initials"];
+  // Signature + initials are PNGs stored server-side in agent_defaults.
+  // They're EXCLUDED from the payload by default — the preview-then-sign
+  // flow runs an unsigned generate first so the agent can review the
+  // unstamped PDF before committing their signature. Only when the user
+  // explicitly clicks "Sign & finalize" do we include them.
+  //
+  // We still send the signature_status fields-required flag back from
+  // the server, so the UI knows whether to show the sign button at all.
+  if (includeSignature) {
+    const d = getDefaults();
+    if (d["agent.signature"]) profile.signature = d["agent.signature"];
+    if (d["agent.initials"]) profile.initials = d["agent.initials"];
+  }
   return profile;
 }
 
@@ -1256,6 +1264,41 @@ async function setActiveTab(docKey) {
   }
 }
 
+// State of the sign-button per most-recent generate response. Tracked so
+// re-entering preview mode (without re-generating) restores the right
+// label without an extra round-trip.
+let _signBtnState = { requiredByTemplate: false, userHasSignature: false, justSigned: false };
+
+function updateSignButton({ requiredByTemplate, userHasSignature, justSigned, fieldsLeftBlank }) {
+  _signBtnState = { requiredByTemplate, userHasSignature, justSigned, fieldsLeftBlank };
+  if (!els.signBtn) return;
+  if (!requiredByTemplate) {
+    els.signBtn.hidden = true;
+    return;
+  }
+  els.signBtn.hidden = false;
+  // Three states the button cycles through:
+  //   1. needs setup → "Sign & finalize" disabled-with-tooltip, click prompts capture
+  //   2. has signature, unsigned PDF → "Sign & finalize" primary action
+  //   3. just signed → "Signed ✓ — Unsign" muted, click reverts to unsigned generate
+  if (justSigned) {
+    els.signBtnLabel.textContent = "Signed ✓ · Unsign";
+    els.signBtn.classList.add("is-signed");
+    els.signBtn.disabled = false;
+    els.signBtn.title = "Remove signature and re-render unsigned";
+  } else if (!userHasSignature) {
+    els.signBtnLabel.textContent = "Set up signature";
+    els.signBtn.classList.remove("is-signed");
+    els.signBtn.disabled = false;
+    els.signBtn.title = "You need to save a signature in your profile before signing.";
+  } else {
+    els.signBtnLabel.textContent = "Sign & finalize";
+    els.signBtn.classList.remove("is-signed");
+    els.signBtn.disabled = false;
+    els.signBtn.title = "Stamp your saved signature on every signature field, then re-render.";
+  }
+}
+
 function enterPreviewMode(docs) {
   lastGenerated = docs;
 
@@ -1502,13 +1545,16 @@ async function runExtract() {
   }
 }
 
-async function runGenerate(triggerBtn) {
+async function runGenerate(triggerBtn, { sign = false } = {}) {
   // 'view' short-circuit: snapshot still matches the last successful generate
   // and there are no inline preview edits dirty → just re-enter preview mode
   // instead of paying the API call again. Only honored on the main bar button;
   // the in-preview Regenerate button always fires through.
+  // Skip the short-circuit on a sign-finalize call — that ALWAYS needs to
+  // re-hit /api/generate with the signature payload, even when the snapshot
+  // matches (the previous generate didn't carry signature bytes).
   const fromMainBar = !triggerBtn || triggerBtn === els.generateBtn;
-  if (fromMainBar && computeGenerateState() === "view" && lastGenerated.length > 0) {
+  if (!sign && fromMainBar && computeGenerateState() === "view" && lastGenerated.length > 0) {
     enterPreviewMode(lastGenerated);
     return;
   }
@@ -1546,7 +1592,7 @@ async function runGenerate(triggerBtn) {
   try {
     const body = {
       fields: collectFields(),
-      agent: readProfileFromInputs(),
+      agent: readProfileFromInputs({ includeSignature: sign }),
       documents: allSelected,
       template_extras: lastTemplateExtras,
     };
@@ -1583,21 +1629,27 @@ async function runGenerate(triggerBtn) {
       toast(`${failures.length} doc${failures.length === 1 ? "" : "s"} failed:\n${summary}`, "error", 7000);
     }
 
-    // Signature follow-up. If the batch needed a signature and the agent
-    // hasn't set one up yet, open the capture modal — they can come back
-    // and regenerate to get the signed version. We open this AFTER the
-    // generated docs render so the agent isn't ambushed mid-flow; they
-    // see their (unsigned) docs first, then get nudged to upgrade.
+    // Signature flow — preview-then-sign. The just-completed generate
+    // call either included signature bytes (sign=true: this was the
+    // finalize call) or didn't (sign=false: unsigned preview, default).
+    //
+    // Update the sign button state based on:
+    //   - whether THIS batch needs a signature (signature_status.required_by_template)
+    //   - whether the agent has one saved (signature_status.user_has_signature
+    //     OR the local defaults cache — the server flag won't be true on an
+    //     unsigned call because we stripped the bytes from the payload)
+    //   - whether this call was the finalize (sign=true) — switch button to "Signed ✓"
     const sigStatus = data.signature_status || {};
-    if (sigStatus.required_by_template && !sigStatus.user_has_signature) {
-      const nameEl = document.querySelector('[data-profile="name"]');
-      openSignatureModal({
-        mode: "agent",
-        agentName: nameEl ? nameEl.value : "",
-      });
-      toast("Add your signature once — every form will pick it up.", "info", 5500);
-    } else if (sigStatus.fields_left_blank > 0) {
-      // Saved signature but stamping failed on some fields — soft warning.
+    const localDefaults = getDefaults();
+    const userHasSignature =
+      !!localDefaults["agent.signature"] || !!localDefaults["agent.initials"];
+    updateSignButton({
+      requiredByTemplate: sigStatus.required_by_template,
+      userHasSignature,
+      justSigned: sign,
+      fieldsLeftBlank: sigStatus.fields_left_blank || 0,
+    });
+    if (sign && sigStatus.fields_left_blank > 0) {
       toast(
         `Signature couldn't be stamped on ${sigStatus.fields_left_blank} field${sigStatus.fields_left_blank === 1 ? "" : "s"}. ` +
         `Try re-saving your signature in Profile.`,
@@ -1636,6 +1688,32 @@ async function runGenerate(triggerBtn) {
 els.extractBtn.addEventListener("click", runExtract);
 els.generateBtn.addEventListener("click", () => runGenerate(els.generateBtn));
 els.regenerateBtn.addEventListener("click", () => runGenerate(els.regenerateBtn));
+
+// Sign-and-finalize button. Three branches based on the current state:
+//   - already-signed:  next click unsigns (re-generates without signature bytes)
+//   - signature saved: this click signs (re-generates WITH signature bytes)
+//   - no signature:    this click opens the capture modal; the agent saves;
+//                      then clicks Sign again to finalize.
+if (els.signBtn) {
+  els.signBtn.addEventListener("click", () => {
+    if (_signBtnState.justSigned) {
+      // Toggle off → unsigned regenerate.
+      runGenerate(els.signBtn, { sign: false });
+      return;
+    }
+    if (!_signBtnState.userHasSignature) {
+      // Capture first; after save, agent clicks Sign again.
+      const nameEl = document.querySelector('[data-profile="name"]');
+      openSignatureModal({
+        mode: "agent",
+        agentName: nameEl ? nameEl.value : "",
+      });
+      toast("Save your signature, then click Sign & finalize.", "info", 4500);
+      return;
+    }
+    runGenerate(els.signBtn, { sign: true });
+  });
+}
 if (els.saveEditsBtn) {
   els.saveEditsBtn.addEventListener("click", saveEditsForActiveDoc);
 }

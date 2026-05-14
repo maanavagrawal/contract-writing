@@ -319,6 +319,17 @@
                 </span>
                 <span class="btn-spinner" hidden></span>
               </button>
+              <!-- Sign-off button. Hidden until generate response says
+                   the templates have signature fields. When the user
+                   has a signature saved, this is the one-click finalize.
+                   When they don't, it nudges them to set one up. -->
+              <button class="btn-primary btn-sm sign-btn" id="sign-btn" hidden>
+                <span class="btn-label">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 19c-2.5 0-2.5-2-5-2s-2.5 2-5 2-2.5-2-5-2-2.5 2-5 2"/><path d="M2 12h20"/><path d="M2 5h20"/></svg>
+                  <span id="sign-btn-label">Sign &amp; finalize</span>
+                </span>
+                <span class="btn-spinner" hidden></span>
+              </button>
             </div>
           </div>
           <div class="tab-strip" id="tab-strip" role="tablist"></div>

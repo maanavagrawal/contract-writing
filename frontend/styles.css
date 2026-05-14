@@ -1880,3 +1880,25 @@ details.uncertain-fields[open] .uncertain-chevron {
   font-size: 11.5px;
   color: var(--text-secondary, #6e6e73);
 }
+
+/* Sign-and-finalize button: shifts from primary blue (Sign) to a muted
+   green-tinted "signed" state when the agent has just stamped. The
+   .is-signed state still allows clicking to unsign (button stays
+   clickable — the label is the visual cue). */
+.sign-btn {
+  background: #34c759;
+  border-color: #34c759;
+}
+.sign-btn:hover:not(:disabled) {
+  background: #2db84d;
+  border-color: #2db84d;
+}
+.sign-btn.is-signed {
+  background: var(--surface-2, #f5f5f7);
+  color: var(--text, #1d1d1f);
+  border: 1px solid var(--border, #d2d2d7);
+}
+.sign-btn.is-signed:hover:not(:disabled) {
+  background: var(--surface, #fff);
+  border-color: var(--text-secondary, #6e6e73);
+}
