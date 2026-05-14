@@ -22,6 +22,8 @@ from pathlib import Path
 from pydantic import ValidationError
 from pypdf import PdfReader
 
+import re
+
 from .interpolate import build_context, interpolate_mapping
 from .pdf_fill import fill_pdf
 from .schema import AgentProfile, GeneratedDoc, MappingFile, TransactionFields, UncertainField
@@ -40,6 +42,58 @@ if _STORAGE_ROOT:
 else:
     MAPPINGS_DIR = Path(__file__).resolve().parent / "mappings"
     TEMPLATES_DIR = ROOT / "templates" / "pdf"
+
+
+# Detect mapping templates that should resolve to an agent signature/initials
+# stamp at fill time, including stale mappings uploaded before the signature
+# canonicals shipped. The newer mapper writes "{agent.signature}" /
+# "{agent.initials}" directly; older mappings used template_extras.* names
+# like "broker_agent_initials_1" or "agent_signature_by_line_2".
+#
+# These regexes recover the agent-side ones retroactively WITHOUT touching
+# the JSON on disk — the rewrite is per-request. Counterparty extras
+# (buyer_*, seller_*, party_*, *legally_authorized_signer*) deliberately
+# stay null so we never stamp the agent's PNG on a client's row.
+_AGENT_SIGNATURE_EXTRA_RE = re.compile(
+    r"^\{template_extras\.("
+    # broker/agent signature lines
+    r"(?:by_)?broker_agent_signature[a-z0-9_]*"
+    r"|broker_signature(?:_line|_label|_date)?[a-z0-9_]*"
+    r"|agent_signature[a-z0-9_]*"
+    r")\}$"
+)
+_AGENT_INITIALS_EXTRA_RE = re.compile(
+    r"^\{template_extras\.("
+    r"broker_agent_initials[a-z0-9_]*"
+    r"|agent_initials[a-z0-9_]*"
+    r")\}$"
+)
+
+
+def _signature_kind_for_template(template: str) -> str | None:
+    """Return 'agent' | 'initials' | None for a mapping template string.
+
+    None means: not a signature/initials field at all, OR a counterparty
+    signature field we deliberately leave null (buyer_*, seller_*, etc.).
+    The caller hands the rendered string straight to pdf_fill in that case.
+
+    Recognized:
+      - "{agent.signature}" / "{agent.initials}" (new canonicals, post 2026-05-13)
+      - "{template_extras.broker_agent_initials_*}" and family (stale mappings)
+      - "{template_extras.agent_signature_*}" / "{template_extras.broker_signature_*}"
+    """
+    if not isinstance(template, str):
+        return None
+    t = template.strip()
+    if t == "{agent.signature}":
+        return "agent"
+    if t == "{agent.initials}":
+        return "initials"
+    if _AGENT_SIGNATURE_EXTRA_RE.match(t):
+        return "agent"
+    if _AGENT_INITIALS_EXTRA_RE.match(t):
+        return "initials"
+    return None
 
 
 class UnknownDocument(Exception):
@@ -131,38 +185,34 @@ def fill_document(
     initials_b64 = (agent.initials or "").strip()
     signature_fields_total = 0
     signature_fields_stamped = 0
+    # Pre-decode the PNGs once per fill_document. Decoding base64 on every
+    # field would be wasteful (CAR BRBC has ~30 sig/initials fields).
+    sig_png_bytes: bytes | None = None
+    init_png_bytes: bytes | None = None
+    if signature_b64:
+        try:
+            sig_png_bytes = base64.b64decode(signature_b64, validate=True)
+        except Exception:
+            sig_png_bytes = None  # corrupt; downstream blanks the fields
+    if initials_b64:
+        try:
+            init_png_bytes = base64.b64decode(initials_b64, validate=True)
+        except Exception:
+            init_png_bytes = None
+
     for pdf_field, raw_template in mapping.fields.items():
-        if not isinstance(raw_template, str):
+        kind = _signature_kind_for_template(raw_template if isinstance(raw_template, str) else "")
+        if kind is None:
             continue
-        template = raw_template.strip()
-        if template == "{agent.signature}":
-            signature_fields_total += 1
-            if signature_b64:
-                try:
-                    rendered[pdf_field] = SigStamp(
-                        kind="agent",
-                        png_bytes=base64.b64decode(signature_b64, validate=True),
-                    )
-                    signature_fields_stamped += 1
-                except Exception:
-                    # Corrupt base64 in the stored default — fall through to
-                    # blank field + soft warning. Never 500 on a bad PNG.
-                    rendered[pdf_field] = ""
-            else:
-                rendered[pdf_field] = ""
-        elif template == "{agent.initials}":
-            signature_fields_total += 1
-            if initials_b64:
-                try:
-                    rendered[pdf_field] = SigStamp(
-                        kind="initials",
-                        png_bytes=base64.b64decode(initials_b64, validate=True),
-                    )
-                    signature_fields_stamped += 1
-                except Exception:
-                    rendered[pdf_field] = ""
-            else:
-                rendered[pdf_field] = ""
+        signature_fields_total += 1
+        png = sig_png_bytes if kind == "agent" else init_png_bytes
+        if png is not None:
+            rendered[pdf_field] = SigStamp(kind=kind, png_bytes=png)
+            signature_fields_stamped += 1
+        else:
+            # Agent hasn't saved this stamp yet (or it's corrupt) — leave the
+            # field blank. pdf_fill skips empties so no /V write happens.
+            rendered[pdf_field] = ""
 
     reader = PdfReader(str(source_pdf))
     try:
